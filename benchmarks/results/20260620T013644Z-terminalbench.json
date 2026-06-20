@@ -1,0 +1,12 @@
+{
+  "benchmark": "terminalbench",
+  "instance_id": "fix-git",
+  "passed": 1,
+  "total": 1,
+  "score": 1.0,
+  "resolved": true,
+  "duration_seconds": 4359,
+  "status": "success",
+  "timestamp": "20260620T013644Z",
+  "details": {}
+}

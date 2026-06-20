@@ -1,0 +1,14 @@
+{
+  "benchmark": "featurebench",
+  "instance_id": "pypa__packaging.013f3b03.test_metadata.e00b5801.lv1",
+  "passed": 0,
+  "total": 1,
+  "score": 0.0,
+  "resolved": false,
+  "duration_seconds": 3208,
+  "status": "failed",
+  "timestamp": "20260620T052109Z",
+  "details": {
+    "pass_rate": 0
+  }
+}
