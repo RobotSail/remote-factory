@@ -329,7 +329,7 @@ SCOREEOF
         --headless \
         --no-github \
         --mode improve \
-        --focus "Implement all empty function bodies in the source files. Functions have had their bodies removed and need to be reimplemented based on their signatures, docstrings, and the project context." \
+        --prompt "${SOLVER_PROMPT_FILE}" \
         2>&1 | tee "${SOLVER_LOG}" | tail -50 || true
     SOLVER_EXIT=${PIPESTATUS[0]}
 fi

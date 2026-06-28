@@ -25,8 +25,20 @@ def create_worktree(project_path: Path, base_branch: str = "main") -> tuple[Path
     log.info("worktree_create", branch=branch, path=str(wt_dir))
 
     wt_parent.mkdir(parents=True, exist_ok=True)
+
+    # Resolve symbolic refs (HEAD, tags, etc.) to commit SHA
+    result = subprocess.run(
+        ["git", "rev-parse", base_branch],
+        cwd=project_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    resolved_ref = result.stdout.strip()
+    log.info("worktree_base_resolved", original=base_branch, resolved=resolved_ref)
+
     subprocess.run(
-        ["git", "worktree", "add", str(wt_dir), "-b", branch, base_branch],
+        ["git", "worktree", "add", str(wt_dir), "-b", branch, resolved_ref],
         cwd=project_path,
         check=True,
         capture_output=True,

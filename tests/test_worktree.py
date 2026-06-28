@@ -256,6 +256,104 @@ class TestDetectDefaultBranch:
         assert detect_default_branch(project) == "develop"
 
 
+class TestCreateWorktreeResolvesRef:
+    """Verify that create_worktree resolves symbolic refs (HEAD, branch names) to SHAs."""
+
+    def test_create_worktree_resolves_head_to_sha(self, git_project: Path) -> None:
+        expected_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=git_project, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+
+        wt_path, branch = create_worktree(git_project, base_branch="HEAD")
+
+        wt_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=wt_path, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert wt_sha == expected_sha
+        assert (wt_path / "README.md").exists()
+
+    def test_create_worktree_resolves_branch_to_sha(self, git_project: Path) -> None:
+        env = {
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_COMMITTER_NAME": "test",
+            "GIT_COMMITTER_EMAIL": "test@test.com",
+            "HOME": str(git_project.parent),
+            "PATH": "/usr/bin:/bin:/usr/local/bin",
+        }
+        subprocess.run(
+            ["git", "checkout", "-b", "feature-x"],
+            cwd=git_project, capture_output=True, check=True,
+        )
+        (git_project / "feature.txt").write_text("feature content")
+        subprocess.run(["git", "add", "."], cwd=git_project, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "feature commit"],
+            cwd=git_project, capture_output=True, check=True, env=env,
+        )
+        feature_sha = subprocess.run(
+            ["git", "rev-parse", "feature-x"],
+            cwd=git_project, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        subprocess.run(
+            ["git", "checkout", "main"],
+            cwd=git_project, capture_output=True, check=True,
+        )
+
+        wt_path, _ = create_worktree(git_project, base_branch="feature-x")
+
+        wt_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=wt_path, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert wt_sha == feature_sha
+        assert (wt_path / "feature.txt").exists()
+
+    def test_create_worktree_resolves_detached_head(self, git_project: Path) -> None:
+        """Detached HEAD scenario — exactly what FeatureBench does after checkout of a commit."""
+        env = {
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_COMMITTER_NAME": "test",
+            "GIT_COMMITTER_EMAIL": "test@test.com",
+            "HOME": str(git_project.parent),
+            "PATH": "/usr/bin:/bin:/usr/local/bin",
+        }
+        initial_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=git_project, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+
+        # Detach HEAD at the initial commit (mimics `git checkout <sha>`)
+        subprocess.run(
+            ["git", "checkout", "--detach", "HEAD"],
+            cwd=git_project, capture_output=True, check=True,
+        )
+        # Add a file and amend — creates a new commit only reachable via detached HEAD
+        (git_project / "detached.txt").write_text("detached content")
+        subprocess.run(["git", "add", "."], cwd=git_project, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "detached commit"],
+            cwd=git_project, capture_output=True, check=True, env=env,
+        )
+        detached_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=git_project, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert detached_sha != initial_sha
+
+        wt_path, _ = create_worktree(git_project, base_branch="HEAD")
+
+        wt_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=wt_path, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert wt_sha == detached_sha
+        assert (wt_path / "detached.txt").exists()
+
+
 class TestCreateWorktreeWithMaster:
     def test_create_worktree_on_master_repo(self, git_project_master: Path) -> None:
         wt_path, branch = create_worktree(git_project_master, base_branch="master")
