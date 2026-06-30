@@ -80,6 +80,17 @@ jobs:
             --generate-notes \
             $NOTES_ARGS
 
+      - name: Trigger benchmark workflow
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run benchmark.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f benchmark=all \
+            -f solver=both
+
       - name: Cleanup old nightly releases
         if: steps.check.outputs.skip != 'true'
         env:

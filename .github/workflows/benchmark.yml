@@ -504,7 +504,7 @@ jobs:
             }
 
       - name: Update release notes
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
         uses: actions/github-script@v7
         with:
           script: |
@@ -543,10 +543,30 @@ jobs:
             const repo = context.repo.repo;
             benchmarkSection += '\n📊 [View benchmark dashboard](https://' + owner + '.github.io/' + repo + '/benchmarks/)\n';
 
+            let releaseId;
+            if (context.eventName === 'release') {
+              releaseId = context.payload.release.id;
+            } else {
+              // For workflow_dispatch, find today's nightly release
+              const today = new Date().toISOString().slice(0, 10);
+              const tag = 'nightly-' + today;
+              try {
+                const { data: rel } = await github.rest.repos.getReleaseByTag({
+                  owner: owner,
+                  repo: repo,
+                  tag: tag
+                });
+                releaseId = rel.id;
+              } catch (e) {
+                console.log('No nightly release found for tag ' + tag + ', skipping');
+                return;
+              }
+            }
+
             const release = await github.rest.repos.getRelease({
               owner: owner,
               repo: repo,
-              release_id: context.payload.release.id
+              release_id: releaseId
             });
 
             const existingBody = release.data.body || '';
@@ -560,6 +580,6 @@ jobs:
             await github.rest.repos.updateRelease({
               owner: owner,
               repo: repo,
-              release_id: context.payload.release.id,
+              release_id: releaseId,
               body: newBody
             });
