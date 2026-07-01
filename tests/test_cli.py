@@ -1778,9 +1778,9 @@ class TestCmdTmuxBareCLI:
         from factory.cli import cmd_tmux
         import argparse
 
-        with patch("factory.cli.ceo._tmux_available", return_value=True), \
-             patch("factory.cli.ceo._tmux_session_alive", return_value=True), \
-             patch("factory.cli.ceo.time.sleep"), \
+        with patch("factory.cli._tmux_commands._tmux_available", return_value=True), \
+             patch("factory.cli._tmux_commands._tmux_session_alive", return_value=True), \
+             patch("factory.cli._tmux_commands.time.sleep"), \
              patch("subprocess.run") as mock_run:
             mock_run.return_value = type("R", (), {"returncode": 1})()  # has-session fails
             mock_run.side_effect = [
