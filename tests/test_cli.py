@@ -1040,13 +1040,14 @@ class TestCmdAgentParser:
     def test_agent_custom_timeout(self):
         parser = build_parser()
         args = parser.parse_args([
-            "agent", "qa", "--task", "Eval", "--project", "/path", "--timeout", "300",
+            "agent", "health_checker", "--task", "Eval", "--project", "/path", "--timeout", "300",
         ])
         assert args.timeout == 300.0
 
     def test_agent_all_roles_valid(self):
         parser = build_parser()
-        for role in ["researcher", "strategist", "builder", "qa", "archivist", "ceo"]:
+        for role in ["researcher", "strategist", "builder", "health_checker",
+                     "code_reviewer", "adversarial_tester", "archivist", "ceo"]:
             args = parser.parse_args(["agent", role, "--task", "test", "--project", "/path"])
             assert args.role == role
 
@@ -1137,9 +1138,7 @@ class TestCmdCeoReview:
         assert "review-only run" in task
         assert "no Builder iterations" in task
         assert "factory eval" in task
-        assert "step 2c-qa" in task
         assert "iteration 1/1" in task
-        assert "step 2d" in task
         assert "--reason" in task
         assert "--qa-body-file" in task
         assert "factory review --verdict" in task
@@ -1186,34 +1185,33 @@ class TestCmdCeoReview:
 
 class TestCmdCeoQa:
     def test_qa_mode_without_pr_errors(self, capsys):
-        result = main(["ceo", "/some/path", "--mode", "qa"])
+        result = main(["ceo", "/some/path", "--mode", "deep-qa"])
         assert result == 1
         assert "--pr" in capsys.readouterr().err
 
     def test_qa_mode_nonexistent_path_errors(self, capsys):
-        result = main(["ceo", "/nonexistent/path", "--mode", "qa", "--pr", "42"])
+        result = main(["ceo", "/nonexistent/path", "--mode", "deep-qa", "--pr", "42"])
         assert result == 1
         assert "existing directory" in capsys.readouterr().err
 
     def test_qa_mode_headless_builds_correct_task(self, tmp_path, capsys):
-        """--mode qa --pr 42 --headless builds a qa task and invokes CEO."""
+        """--mode deep-qa --pr 42 --headless builds a deep-qa task and invokes CEO."""
         with patch("factory.agents.runner.invoke_agent", _mock_invoke_agent_ok()) as mock_agent:
-            result = main(["ceo", str(tmp_path), "--mode", "qa", "--pr", "42", "--headless"])
+            result = main(["ceo", str(tmp_path), "--mode", "deep-qa", "--pr", "42", "--headless"])
         assert result == 0
         mock_agent.assert_called_once()
         task = mock_agent.call_args[0][1]
-        assert "Mode: qa" in task
+        assert "Mode: deep-qa" in task
         assert "PR #42" in task
         assert "factory review --verdict" in task
         assert "--reason" in task
         assert "--qa-body-file" in task
-        assert "workflow-qa SKILL.md" in task
         assert "Do NOT post any PR comments" in task
 
     def test_qa_mode_headless_with_repo(self, tmp_path, capsys):
-        """--mode qa --pr 42 --repo owner/repo includes repo in task."""
+        """--mode deep-qa --pr 42 --repo owner/repo includes repo in task."""
         with patch("factory.agents.runner.invoke_agent", _mock_invoke_agent_ok()) as mock_agent:
-            result = main(["ceo", str(tmp_path), "--mode", "qa", "--pr", "42",
+            result = main(["ceo", str(tmp_path), "--mode", "deep-qa", "--pr", "42",
                            "--repo", "owner/repo", "--headless"])
         assert result == 0
         task = mock_agent.call_args[0][1]
@@ -1221,30 +1219,30 @@ class TestCmdCeoQa:
         assert "--repo owner/repo" in task
 
     def test_qa_mode_skips_worktree(self, tmp_path):
-        """QA mode does not create worktrees or touch experiment store."""
+        """Deep-QA mode does not create worktrees or touch experiment store."""
         with patch("factory.agents.runner.invoke_agent", _mock_invoke_agent_ok()), \
              patch("factory.worktree.create_worktree") as mock_wt:
-            main(["ceo", str(tmp_path), "--mode", "qa", "--pr", "42", "--headless"])
+            main(["ceo", str(tmp_path), "--mode", "deep-qa", "--pr", "42", "--headless"])
         mock_wt.assert_not_called()
 
     def test_qa_mode_foreground(self, tmp_path):
-        """QA mode without --headless launches interactively."""
+        """Deep-QA mode without --headless launches interactively."""
         mock_run = MagicMock(return_value=MagicMock(returncode=0))
         with patch("factory.runners.claude.subprocess.run", mock_run), \
              patch("factory.cli._helpers._ensure_dashboard"):
-            main(["ceo", str(tmp_path), "--mode", "qa", "--pr", "42"])
+            main(["ceo", str(tmp_path), "--mode", "deep-qa", "--pr", "42"])
         mock_run.assert_called_once()
         cmd = mock_run.call_args[0][0]
         assert cmd[0] == "claude"
         dsp_idx = cmd.index("--dangerously-skip-permissions")
         task = cmd[dsp_idx + 1]
-        assert "Mode: qa" in task
+        assert "Mode: deep-qa" in task
         assert "PR #42" in task
 
     def test_qa_mode_max_respawns_is_1(self, tmp_path):
-        """QA mode uses max_respawns=1."""
+        """Deep-QA mode uses max_respawns=1."""
         with patch("factory.agents.runner.invoke_agent", _mock_invoke_agent_ok()) as mock_agent:
-            main(["ceo", str(tmp_path), "--mode", "qa", "--pr", "42", "--headless"])
+            main(["ceo", str(tmp_path), "--mode", "deep-qa", "--pr", "42", "--headless"])
         call_kwargs = mock_agent.call_args[1]
         assert call_kwargs.get("timeout") == 7200.0
 
@@ -1980,7 +1978,7 @@ class TestDesignFileInput:
     def test_raw_idea_persists_spec(self, tmp_path):
         """When --mode design receives a raw string, the spec should be persisted."""
         with _mock_foreground(), \
-             patch("factory.cli._path_resolver._get_projects_dir", return_value=tmp_path):
+             patch("factory.cli._ceo_helpers._get_projects_dir", return_value=tmp_path):
             main(["ceo", "Build a CLI todo app", "--mode", "design"])
         matches = [p for p in tmp_path.iterdir() if p.is_dir()]
         assert len(matches) == 1

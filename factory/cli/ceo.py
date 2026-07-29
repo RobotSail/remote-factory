@@ -15,7 +15,6 @@ from factory.cli._ceo_helpers import (
 )
 from factory.cli._mode_handlers import (
     _auto_detect_mode,
-    _resolve_model,
     handle_deep_qa_mode,
     handle_review_mode,
 )
