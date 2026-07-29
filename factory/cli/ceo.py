@@ -506,7 +506,9 @@ def cmd_ceo(args: argparse.Namespace) -> int:
     ensure_skills(wt_path, mode=mode)
 
     verification_settings = wt_path / ".factory" / "hooks" / f"settings-{mode}.json"
-    _verification_settings_file = str(verification_settings) if verification_settings.exists() else None
+    _verification_settings_file = (
+        str(verification_settings) if verification_settings.exists() else None
+    )
 
     interactive = (
         design_existing or bool(design_idea) or bool(research_ideation) or mode == "create"
@@ -586,6 +588,13 @@ def cmd_ceo(args: argparse.Namespace) -> int:
         is_headless=headless,
     )
 
+    import uuid as _uuid
+
+    from factory.ceo_completion import write_ceo_session_id
+
+    ceo_session_id = str(_uuid.uuid4())
+    write_ceo_session_id(wt_path, ceo_session_id, interactive=interactive, mode=mode)
+
     if headless:
         # Non-interactive pipe mode (for scripting, cron, tmux)
         # Uses completion guard to auto-resume on premature exit
@@ -601,6 +610,7 @@ def cmd_ceo(args: argparse.Namespace) -> int:
                     model=model,
                     timeout=7200.0,
                     session_name=session_name,
+                    session_id=ceo_session_id,
                     use_profile=use_profile,
                     tmux_persist=tmux_persist,
                     background=background,
@@ -632,6 +642,9 @@ def cmd_ceo(args: argparse.Namespace) -> int:
         finally:
             _stop_ceo_tailer(ceo_tailer)
             complete_cycle_session(project_path, cycle_span_id)
+            from factory.ceo_completion import print_resume_hint
+
+            print_resume_hint(project_path)
             if not no_worktree:
                 assert wt_branch is not None
                 remove_worktree(project_path, wt_path, wt_branch)
@@ -664,12 +677,16 @@ def cmd_ceo(args: argparse.Namespace) -> int:
                 role="ceo",
                 skip_permissions=True,
                 session_name=session_name,
+                session_id=ceo_session_id,
                 extras=extras,
             )
         )
     finally:
         _stop_ceo_tailer(ceo_tailer)
         complete_cycle_session(project_path, cycle_span_id)
+        from factory.ceo_completion import print_resume_hint
+
+        print_resume_hint(project_path)
         if not no_worktree:
             assert wt_branch is not None
             remove_worktree(project_path, wt_path, wt_branch)
@@ -1496,7 +1513,8 @@ def cmd_refactory(args: argparse.Namespace) -> int:
             session_id,
             "--append-system-prompt-file",
             prompt_file.name,
-            "--disallowedTools", "Agent",
+            "--disallowedTools",
+            "Agent",
             "--dangerously-skip-permissions",
         ]
     else:
@@ -1506,7 +1524,8 @@ def cmd_refactory(args: argparse.Namespace) -> int:
             session_id,
             "--append-system-prompt-file",
             prompt_file.name,
-            "--disallowedTools", "Agent",
+            "--disallowedTools",
+            "Agent",
             "--dangerously-skip-permissions",
         ]
 
