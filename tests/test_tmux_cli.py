@@ -12,14 +12,13 @@ import pytest
 
 from factory.cli import (
     CEO_MODES,
-    _tmux_session_name,
     build_parser,
     cmd_tmux,
     cmd_tmux_capture,
     cmd_tmux_ls,
     cmd_tmux_stop,
 )
-from factory.cli._tmux_commands import _build_tmux_run_args, _tmux_session_alive
+from factory.cli._tmux_commands import _build_tmux_run_args, _tmux_session_alive, _tmux_session_name
 
 
 class TestTmuxSessionName:

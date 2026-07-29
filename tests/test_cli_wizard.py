@@ -870,7 +870,7 @@ class TestExistingSubcommands:
 
 class TestBannerUpdate:
     def test_banner_tagline(self, capsys: pytest.CaptureFixture[str]) -> None:
-        from factory.cli import _print_banner
+        from factory.cli._helpers import _print_banner
 
         with patch("sys.stderr") as mock_stderr, \
              patch.dict("os.environ", {"NO_COLOR": "1"}):

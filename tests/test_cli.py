@@ -172,7 +172,7 @@ class TestGroupedHelp:
             assert header in help_text, f"Missing group header: {header}"
 
     def test_all_subcommands_covered_by_groups(self):
-        from factory.cli import _COMMAND_GROUPS
+        from factory.cli._main import _COMMAND_GROUPS
         grouped = {cmd for _, cmds in _COMMAND_GROUPS for cmd in cmds}
         parser = build_parser()
         sub_action = None
@@ -186,7 +186,7 @@ class TestGroupedHelp:
         assert orphans == set(), f"Commands not in any group: {orphans}"
 
     def test_no_command_in_multiple_groups(self):
-        from factory.cli import _COMMAND_GROUPS
+        from factory.cli._main import _COMMAND_GROUPS
         seen: dict[str, str] = {}
         duplicates: list[str] = []
         for group_name, cmds in _COMMAND_GROUPS:
@@ -201,7 +201,7 @@ class TestGroupedHelp:
         assert "\nOther:\n" not in help_text, "Help has an 'Other' section — some commands are ungrouped"
 
     def test_group_count_is_nine(self):
-        from factory.cli import _COMMAND_GROUPS
+        from factory.cli._main import _COMMAND_GROUPS
         assert len(_COMMAND_GROUPS) == 9
 
 
@@ -1587,7 +1587,7 @@ class TestResearchMode:
         store = ExperimentStore(tmp_project)
         asyncio.run(store.init(config_with_research))
 
-        from factory.cli import _auto_detect_mode
+        from factory.cli._mode_handlers import _auto_detect_mode
         mode = _auto_detect_mode(tmp_project, force_fresh=True)
         assert mode == "research"
 
@@ -1596,7 +1596,7 @@ class TestResearchMode:
         store = ExperimentStore(tmp_project)
         asyncio.run(store.init(sample_config))
 
-        from factory.cli import _auto_detect_mode
+        from factory.cli._mode_handlers import _auto_detect_mode
         mode = _auto_detect_mode(tmp_project, force_fresh=True)
         assert mode == "improve"
 

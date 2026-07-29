@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from factory.cli._helpers import CEO_MODES as CEO_MODES
 from factory.cli._helpers import RUN_MODES as RUN_MODES
-from factory.cli._helpers import _emit_cli_event as _emit_cli_event
-from factory.cli._helpers import _print_banner as _print_banner
-from factory.cli._main import _COMMAND_GROUPS as _COMMAND_GROUPS
 from factory.cli._main import build_parser as build_parser
 from factory.cli._main import main as main
 from factory.cli.admin import (
@@ -35,26 +32,7 @@ from factory.cli.backlog import (
     cmd_backlog_list as cmd_backlog_list,
     cmd_backlog_remove as cmd_backlog_remove,
 )
-from factory.cli._ceo_dispatch import (
-    _start_ceo_tailer as _start_ceo_tailer,
-    _stop_ceo_tailer as _stop_ceo_tailer,
-)
-from factory.cli._mode_handlers import (
-    _auto_detect_mode as _auto_detect_mode,
-    _resolve_background as _resolve_background,
-    _resolve_bg_agents as _resolve_bg_agents,
-    _resolve_model as _resolve_model,
-)
-from factory.cli._path_resolver import (
-    _materialize_project as _materialize_project,
-    _resolve_focus_issue as _resolve_focus_issue,
-    _resolve_input as _resolve_input,
-)
-from factory.cli._task_builder import (
-    _build_ceo_task as _build_ceo_task,
-)
 from factory.cli._tmux_commands import (
-    _tmux_session_name as _tmux_session_name,
     cmd_tmux as cmd_tmux,
     cmd_tmux_capture as cmd_tmux_capture,
     cmd_tmux_ls as cmd_tmux_ls,
