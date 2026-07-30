@@ -441,6 +441,9 @@ def add_entry_point_parsers(sub: argparse._SubParsersAction) -> None:  # type: i
     p.add_argument("--no-worktree", action="store_true", default=False, dest="no_worktree",
                     help="Run directly in the project directory without creating a worktree "
                          "(useful for testing in-flight branch changes)")
+    p.add_argument("--overwrite", default=None, metavar="TEXT",
+                    help="Natural-language directive to mutate the workflow for this session "
+                         "(e.g. 'skip adversarial testing', 'add a lint step after build')")
 
     p = sub.add_parser("run", help="Run factory cycle (delegates to CEO agent)")
     p.add_argument("path", help="Project path, GitHub URL, idea file path, or prompt")
@@ -514,6 +517,8 @@ def add_entry_point_parsers(sub: argparse._SubParsersAction) -> None:  # type: i
     p.add_argument("--no-worktree", action="store_true", default=False, dest="no_worktree",
                     help="Run directly in the project directory without creating a worktree "
                          "(useful for testing in-flight branch changes)")
+    p.add_argument("--overwrite", default=None, metavar="TEXT",
+                    help="Natural-language directive to mutate the workflow for this session")
 
     p = sub.add_parser("tmux", help="Launch factory run in a detached tmux session")
     p.add_argument("path", help="Path to the project")
@@ -570,6 +575,8 @@ def add_entry_point_parsers(sub: argparse._SubParsersAction) -> None:  # type: i
                     help="Run agent interactively in a tmux window instead of headless (claude only)")
     p.add_argument("--use-profile", action="store_true", default=False,
                     help="Inject user profile (~/.factory/profile.md) into agent prompts")
+    p.add_argument("--overwrite", default=None, metavar="TEXT",
+                    help="Natural-language directive to mutate the workflow for this session")
 
     p = sub.add_parser("tmux-ls", help="List running factory tmux sessions")
     p.add_argument("--json", action="store_true", default=False, dest="json_output",
@@ -595,6 +602,8 @@ def add_entry_point_parsers(sub: argparse._SubParsersAction) -> None:  # type: i
                     help="Reset session (new session ID, fresh start)")
     p.add_argument("--model", default=None,
                     help="Claude model override")
+    p.add_argument("--loop", action="store_true", default=False,
+                    help="Enable workflow-tune loop: adds /workflow-tune skill for iterative tuning")
 
     from factory.workflow.cli import add_workflow_parser
     add_workflow_parser(sub)  # type: ignore[arg-type]
