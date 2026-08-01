@@ -74,6 +74,7 @@ def _run_single_cycle(
     background: bool = False,
     run_id: str | None = None,
     no_worktree: bool = False,
+    overwrite: str | None = None,
 ) -> int:
     """Execute a single factory run cycle via the CEO agent. Returns 0 on success, 1 on error."""
     from factory.agents.runner import invoke_agent
@@ -99,6 +100,15 @@ def _run_single_cycle(
     from factory.skill_cache import ensure_skills
 
     ensure_skills(wt_path)
+
+    if overwrite and mode and mode != "auto":
+        from factory.workflow.definitions import register_all
+        from factory.workflow.overwrite import apply_overwrite, generate_session_skill
+
+        workflows = register_all()
+        if mode in workflows:
+            mutated = apply_overwrite(workflows[mode], overwrite, wt_path)
+            generate_session_skill(mutated, mode, wt_path)
 
     try:
         task = _build_ceo_task(
@@ -438,6 +448,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     budget_kwargs = dict(min_growth=min_growth, max_new=max_new, branch=branch)
     skip_improve = mode in ("improve", "meta") or discover_only
 
+    overwrite = getattr(args, "overwrite", None)
+
     if not loop:
         code = _run_single_cycle(
             project_path,
@@ -456,6 +468,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             background=background,
             run_id=run_id,
             no_worktree=no_worktree,
+            overwrite=overwrite,
             **budget_kwargs,
         )
         if code != 0:

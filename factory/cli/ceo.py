@@ -133,6 +133,15 @@ def cmd_refactory(args: argparse.Namespace) -> int:
     project_path = Path(getattr(args, "path", None) or Path.cwd()).resolve()
 
     setup_workspace(project_path)
+
+    loop = getattr(args, "loop", False)
+    if loop:
+        tune_skill_src = Path(__file__).parent.parent / "agents" / "skills" / "workflow-tune.md"
+        if tune_skill_src.is_file():
+            commands_dir = project_path / ".claude" / "commands"
+            commands_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(tune_skill_src, commands_dir / "workflow-tune.md")
+
     reset = getattr(args, "reset", False)
     session_file = project_path / ".refactory" / "session.json"
     is_new_session = reset or not session_file.exists()

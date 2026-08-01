@@ -407,6 +407,18 @@ def _execute_ceo(
     if is_graphify_installed():
         extract_graph(wt_path)
 
+    overwrite = getattr(args, "overwrite", None)
+    if overwrite and mode and mode != "auto":
+        from factory.workflow.definitions import register_all
+        from factory.workflow.overwrite import apply_overwrite, generate_session_skill
+
+        workflows = register_all()
+        if mode in workflows:
+            mutated = apply_overwrite(workflows[mode], overwrite, wt_path)
+            generate_session_skill(mutated, mode, wt_path)
+        else:
+            log.warning("overwrite.mode_not_found", mode=mode)
+
     verification_settings = wt_path / ".factory" / "hooks" / f"settings-{mode}.json"
     _verification_settings_file = (
         str(verification_settings) if verification_settings.exists() else None
