@@ -124,7 +124,7 @@ def compile(
         def router(state: PfExecState) -> str:
             if state["budget"] <= 0:
                 return END
-            if state["fork_count"] > cfg.max_forks:
+            if state["fork_count"] >= cfg.max_forks:
                 return END
             pointer = state["pointer"]
             if pointer != nid and pointer in node_map:
@@ -181,7 +181,7 @@ def run_compiled(
 
     if final_es.budget_remaining <= 0:
         terminated_by = "budget"
-    elif forks > cfg.max_forks:
+    elif forks >= cfg.max_forks:
         terminated_by = "max_forks"
     else:
         terminated_by = "complete"

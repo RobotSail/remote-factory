@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import random
 from dataclasses import replace
@@ -67,10 +68,14 @@ def sample(
 
     output = backend.call(prompt, system=node.spec)
 
+    new_trace = copy.deepcopy(state.trace)
+    new_belief = copy.deepcopy(state.belief)
     new_state = replace(
         state,
         step=state.step + 1,
         budget_remaining=state.budget_remaining - 1,
+        trace=new_trace,
+        belief=new_belief,
     )
     new_state.trace.add_step(node.id, checkpoint_id=f"step-{new_state.step}")
     return new_state, output
@@ -99,7 +104,8 @@ def observe(
                 f"Which plan better explains the observation? Reply 'A' or 'B'."
             )
             result = backend.call(prompt)
-            if "A" in result.upper().split()[0] if result.strip() else False:
+            first_word = result.strip().split()[0].upper() if result.strip() else ""
+            if first_word == "A":
                 wins[i] += 1.0
             else:
                 wins[j] += 1.0
