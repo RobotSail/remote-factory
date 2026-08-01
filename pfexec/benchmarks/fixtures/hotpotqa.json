@@ -1,0 +1,12 @@
+{
+  "Generate": "[\"multi-hop decomposition with entity linking\", \"parallel sub-question reasoning\", \"stepwise chain-of-thought\"]",
+  "Decompose this multi-hop": "Sub-question 1: Were Scott Derrickson and Ed Wood both directors?\nSub-question 2: What nationality was each of them?",
+  "Answer the following question step by step": "Scott Derrickson is an American film director. Ed Wood was also an American film director. Therefore, they share the same nationality.",
+  "step by step": "Based on the available evidence, the answer to this sub-question is that both individuals are American, confirming they share the same nationality.",
+  "Given multiple candidate answers": "After reviewing all candidate answers, the most consistent answer through majority voting is: yes",
+  "Combine the sub-answers": "Based on the sub-answers: Scott Derrickson is American and Ed Wood was American. They are of the same nationality. The answer is: yes",
+  "Compare": "A",
+  "Summarize": "The reasoning chain correctly decomposed the multi-hop question and traced entity nationalities.",
+  "fresh": "[\"entity-first decomposition\", \"nationality-focused reasoning\", \"comparative analysis\"]",
+  "default": "yes"
+}
