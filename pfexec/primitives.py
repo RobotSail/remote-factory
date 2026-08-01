@@ -5,11 +5,22 @@ from __future__ import annotations
 import copy
 import json
 import random
+import re
 from dataclasses import replace
 
 from pfexec.ir import NodeSpec, WorkflowSpec
 from pfexec.llm import LLMBackend
 from pfexec.state import Belief, ExecutionState, Particle, TraceNode, TraceTree
+
+_FENCE_RE = re.compile(r'```(?:json)?\s*\n?(.*?)\n?\s*```', re.DOTALL)
+
+
+def _extract_json(raw: str) -> str:
+    """Strip markdown code fences from LLM output before JSON parsing."""
+    match = _FENCE_RE.search(raw)
+    if match:
+        return match.group(1).strip()
+    return raw.strip()
 
 
 def init(
@@ -29,7 +40,8 @@ def init(
     )
     raw = backend.call(prompt)
     try:
-        briefs = json.loads(raw)
+        cleaned = _extract_json(raw)
+        briefs = json.loads(cleaned)
         if not isinstance(briefs, list):
             briefs = [raw]
     except (json.JSONDecodeError, TypeError):
@@ -158,7 +170,8 @@ def fork(
     )
     raw = backend.call(rejuv_prompt)
     try:
-        briefs = json.loads(raw)
+        cleaned = _extract_json(raw)
+        briefs = json.loads(cleaned)
         if not isinstance(briefs, list):
             briefs = [raw]
     except (json.JSONDecodeError, TypeError):

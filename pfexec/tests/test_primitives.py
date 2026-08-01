@@ -5,7 +5,7 @@ import random
 
 from pfexec.ir import EdgeSpec, NodeSpec, WorkflowSpec
 from pfexec.llm import DeterministicBackend
-from pfexec.primitives import fork, init, observe, sample
+from pfexec.primitives import _extract_json, fork, init, observe, sample
 
 
 def _make_workflow() -> WorkflowSpec:
@@ -195,3 +195,52 @@ def test_round_trip_init_sample_observe_fork_sample():
     state, out2 = sample(state, wf.nodes[1], backend_2, rng=random.Random(2))
     assert state.step == 2
     assert out2 == "final output"
+
+
+class TestExtractJson:
+    def test_strips_json_fence(self):
+        raw = '```json\n["a", "b", "c"]\n```'
+        assert _extract_json(raw) == '["a", "b", "c"]'
+
+    def test_strips_bare_fence(self):
+        raw = '```\n["a", "b"]\n```'
+        assert _extract_json(raw) == '["a", "b"]'
+
+    def test_passes_through_plain_json(self):
+        raw = '["a", "b"]'
+        assert _extract_json(raw) == '["a", "b"]'
+
+    def test_strips_surrounding_whitespace(self):
+        raw = '  \n ["a"]  \n '
+        assert _extract_json(raw) == '["a"]'
+
+    def test_fence_with_surrounding_text(self):
+        raw = 'Here is the JSON:\n```json\n{"key": "val"}\n```\nDone.'
+        assert _extract_json(raw) == '{"key": "val"}'
+
+
+def test_init_handles_markdown_fenced_json():
+    wf = _make_workflow()
+    fenced = '```json\n["plan-A", "plan-B", "plan-C"]\n```'
+    backend = DeterministicBackend(responses={"Generate": fenced})
+    state = init(wf, "test input", n_particles=3, backend=backend)
+    assert len(state.belief.particles) == 3
+    assert state.belief.particles[0].brief == "plan-A"
+
+
+def test_fork_handles_markdown_fenced_json():
+    wf = _make_workflow()
+    fenced_init = '```json\n["p1", "p2"]\n```'
+    fenced_rejuv = '```json\n["new-1", "new-2"]\n```'
+    backend = DeterministicBackend(
+        responses={
+            "diverse": fenced_init,
+            "Summarize": "failed because X",
+        },
+        default=fenced_rejuv,
+    )
+    state = init(wf, "test", n_particles=2, backend=backend)
+    state.pointer = "b"
+    new_state = fork(state, k=1, backend=backend)
+    assert len(new_state.belief.particles) == 2
+    assert new_state.belief.particles[0].brief == "new-1"
