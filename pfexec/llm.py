@@ -19,7 +19,7 @@ class ClaudeBackend:
     def call(self, prompt: str, system: str = "") -> str:
         cmd = [self._cli, "-p", prompt]
         if system:
-            cmd.extend(["--system", system])
+            cmd.extend(["--system-prompt", system])
         result = subprocess.run(
             cmd,
             capture_output=True,
