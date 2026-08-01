@@ -12,12 +12,12 @@ class LLMBackend(Protocol):
 
 
 class ClaudeBackend:
-    def __init__(self, cli: str = "claude", timeout: int = 120):
+    def __init__(self, cli: str = "claude", timeout: int = 300):
         self._cli = cli
         self._timeout = timeout
 
     def call(self, prompt: str, system: str = "") -> str:
-        cmd = [self._cli, "-p", prompt]
+        cmd = [self._cli, "--bare", "-p", prompt]
         if system:
             cmd.extend(["--system-prompt", system])
         result = subprocess.run(
