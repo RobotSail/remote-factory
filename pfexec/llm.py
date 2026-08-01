@@ -17,7 +17,12 @@ class ClaudeBackend:
         self._timeout = timeout
 
     def call(self, prompt: str, system: str = "") -> str:
-        cmd = [self._cli, "--bare", "--allowedTools", "", "-p", prompt]
+        cmd = [
+            self._cli, "--bare",
+            "--disallowedTools",
+            "Bash Read Edit Write Agent NotebookEdit WebFetch WebSearch",
+            "-p", prompt,
+        ]
         if system:
             cmd.extend(["--system-prompt", system])
         result = subprocess.run(
