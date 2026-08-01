@@ -1,0 +1,9 @@
+{
+  "Generate": "[\"assume ISO date format\", \"assume epoch timestamp format\", \"detect format dynamically\"]",
+  "Do parse": "Parsed 150 customer records. Date field detected as string type.",
+  "Do transform": "Transformed records: converted dates assuming ISO 8601 format (YYYY-MM-DD).",
+  "Do validate": "VALIDATION WARNING: 30% of date fields contain epoch timestamps (e.g., 1706745600), not ISO strings. Schema mismatch detected.",
+  "Compare": "B",
+  "Summarize": "Initial assumption of uniform ISO dates was wrong. Mixed formats require detection logic.",
+  "default": "Applied format detection: ISO dates parsed directly, epoch timestamps converted via datetime.fromtimestamp(). All 150 records validated successfully."
+}
