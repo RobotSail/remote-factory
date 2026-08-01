@@ -95,7 +95,6 @@ def test_observe_updates_weights():
         default="A",
     )
     state = init(wf, "test", n_particles=3, backend=backend)
-    original_weights = [p.weight for p in state.belief.particles]
     new_state = observe(state, "the test passed", backend)
     assert len(new_state.belief.particles) == 3
     new_state.belief.normalize()

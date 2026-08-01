@@ -72,15 +72,15 @@ def main():
     graph = compile(workflow, backend, config)
     result = run_compiled(graph, workflow, args.question, backend, config)
 
-    print(f"=== Multi-Step QA ===")
+    print("=== Multi-Step QA ===")
     print(f"Question: {args.question}")
     print(f"Steps taken: {result.steps_taken}")
     print(f"Forks: {result.forks_triggered}")
     print(f"Terminated by: {result.terminated_by}")
-    print(f"\n--- Particles ---")
+    print("\n--- Particles ---")
     for i, p in enumerate(result.final_state.belief.particles):
         print(f"  [{i}] weight={p.weight:.3f}  brief={p.brief[:60]}")
-    print(f"\n--- Output ---")
+    print("\n--- Output ---")
     print(result.output)
 
 

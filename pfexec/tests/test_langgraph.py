@@ -5,7 +5,6 @@ import json
 from pfexec.engine import EngineConfig
 from pfexec.ir import EdgeSpec, NodeSpec, WorkflowSpec
 from pfexec.langgraph import (
-    PfExecState,
     _belief_to_dict,
     _dict_to_belief,
     _trace_node_to_dict,

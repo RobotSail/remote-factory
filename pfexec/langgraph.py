@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import uuid
-from dataclasses import asdict
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -146,7 +144,6 @@ def compile(
         if not succs:
             graph.add_edge(nid, END)
         elif len(succs) == 1:
-            has_fork_possible = True
             graph.add_conditional_edges(nid, _make_router(nid))
         else:
             graph.add_conditional_edges(nid, _make_router(nid))

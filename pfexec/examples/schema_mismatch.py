@@ -79,15 +79,15 @@ def main():
     graph = compile(workflow, backend, config)
     result = run_compiled(graph, workflow, args.task, backend, config)
 
-    print(f"=== Schema Mismatch Recovery ===")
+    print("=== Schema Mismatch Recovery ===")
     print(f"Task: {args.task}")
     print(f"Steps taken: {result.steps_taken}")
     print(f"Forks triggered: {result.forks_triggered}")
     print(f"Terminated by: {result.terminated_by}")
-    print(f"\n--- Particles ---")
+    print("\n--- Particles ---")
     for i, p in enumerate(result.final_state.belief.particles):
         print(f"  [{i}] weight={p.weight:.3f}  brief={p.brief[:60]}")
-    print(f"\n--- Output ---")
+    print("\n--- Output ---")
     print(result.output)
 
 
