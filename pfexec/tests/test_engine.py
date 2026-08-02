@@ -45,7 +45,7 @@ def test_fork_triggers_on_low_suffix_score():
         name="forkable",
         nodes=[
             NodeSpec(id="a", spec="step A", theta_prior="Do A: {input}"),
-            NodeSpec(id="b", spec="step B", theta_prior="Do B: {input}"),
+            NodeSpec(id="b", spec="step B", theta_prior="Do B: {input}", effect="effectful"),
             NodeSpec(id="c", spec="step C", theta_prior="Do C: {input}"),
         ],
         edges=[

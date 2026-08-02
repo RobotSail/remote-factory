@@ -8,7 +8,7 @@ from typing import TypedDict
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from pfexec.engine import EngineConfig, EngineResult, _suffix_score
+from pfexec.engine import EngineConfig, EngineResult, _suffix_score, _terminal_nodes
 from pfexec.ir import WorkflowSpec
 from pfexec.llm import LLMBackend
 from pfexec.primitives import fork, init, observe, sample
@@ -115,7 +115,7 @@ def compile(
             fc = state["fork_count"]
 
             score = _suffix_score(es.belief)
-            if score < cfg.tau and fc < cfg.max_forks:
+            if node.effect == "effectful" and score < cfg.tau and fc < cfg.max_forks:
                 es = fork(es, cfg.rewind_steps, backend)
                 fc += 1
 
@@ -189,10 +189,20 @@ def run_compiled(
     else:
         terminated_by = "complete"
 
+    terminal = _terminal_nodes(workflow)
+    terminal_output = ""
+    for tid in terminal:
+        if tid in final_es.node_outputs:
+            terminal_output = final_es.node_outputs[tid]
+            break
+    if not terminal_output and outputs:
+        terminal_output = outputs[-1]
+
     return EngineResult(
         final_state=final_es,
-        output="\n".join(outputs),
+        output=terminal_output,
         steps_taken=cfg.max_steps - final_es.budget_remaining,
         forks_triggered=forks,
         terminated_by=terminated_by,
+        all_outputs=outputs,
     )

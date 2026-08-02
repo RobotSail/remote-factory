@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from pfexec.ir import WorkflowSpec
@@ -27,6 +27,7 @@ class EngineResult:
     steps_taken: int
     forks_triggered: int
     terminated_by: Literal["complete", "budget", "max_forks"]
+    all_outputs: list[str] = field(default_factory=list)
 
 
 def run(
@@ -56,20 +57,29 @@ def run(
         state = observe(state, output, backend)
 
         score = _suffix_score(state.belief)
-        if score < cfg.tau and forks_triggered < cfg.max_forks:
+        if node.effect == "effectful" and score < cfg.tau and forks_triggered < cfg.max_forks:
             state = fork(state, cfg.rewind_steps, backend)
             forks_triggered += 1
             current = state.pointer
             visited.discard(current)
             continue
 
-        if forks_triggered >= cfg.max_forks and score < cfg.tau:
+        if node.effect == "effectful" and forks_triggered >= cfg.max_forks and score < cfg.tau:
+            terminal = _terminal_nodes(workflow)
+            terminal_output = ""
+            for tid in terminal:
+                if tid in state.node_outputs:
+                    terminal_output = state.node_outputs[tid]
+                    break
+            if not terminal_output and outputs:
+                terminal_output = outputs[-1]
             return EngineResult(
                 final_state=state,
-                output="\n".join(outputs),
+                output=terminal_output,
                 steps_taken=cfg.max_steps - state.budget_remaining,
                 forks_triggered=forks_triggered,
                 terminated_by="max_forks",
+                all_outputs=outputs,
             )
 
         successors = _topological_successors(workflow, current)
@@ -81,12 +91,22 @@ def run(
     else:
         terminated_by = "complete"
 
+    terminal = _terminal_nodes(workflow)
+    terminal_output = ""
+    for tid in terminal:
+        if tid in state.node_outputs:
+            terminal_output = state.node_outputs[tid]
+            break
+    if not terminal_output and outputs:
+        terminal_output = outputs[-1]
+
     return EngineResult(
         final_state=state,
-        output="\n".join(outputs),
+        output=terminal_output,
         steps_taken=cfg.max_steps - state.budget_remaining,
         forks_triggered=forks_triggered,
         terminated_by=terminated_by,
+        all_outputs=outputs,
     )
 
 
@@ -109,3 +129,8 @@ def _has_incoming_from_unvisited(workflow: WorkflowSpec, visited: set[str]) -> s
         if e.source not in visited:
             result.add(e.target)
     return result
+
+
+def _terminal_nodes(workflow: WorkflowSpec) -> list[str]:
+    sources = {e.source for e in workflow.edges}
+    return [n.id for n in workflow.nodes if n.id not in sources]
