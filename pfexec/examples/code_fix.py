@@ -38,7 +38,7 @@ def build_workflow() -> WorkflowSpec:
             NodeSpec(
                 id="test",
                 spec="Run tests to verify the fix",
-                theta_prior="Run the test suite to verify: {input}",
+                theta_prior="Run the test suite to verify: {input}\nOutput ONLY the answer in 1-5 words, no explanation.",
                 effect="effectful",
             ),
         ],

@@ -37,7 +37,7 @@ def build_workflow() -> WorkflowSpec:
             NodeSpec(
                 id="validate",
                 spec="Validate transformed records against target schema",
-                theta_prior="Validate all transformed records: {input}",
+                theta_prior="Validate all transformed records: {input}\nOutput ONLY the answer in 1-5 words, no explanation.",
                 effect="effectful",
             ),
         ],

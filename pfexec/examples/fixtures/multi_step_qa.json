@@ -1,8 +1,8 @@
 {
   "Generate": "[\"decompose into sub-questions\", \"direct entity lookup\", \"geographic reasoning chain\"]",
-  "Do decompose": "Sub-questions: 1) What is the largest country in Europe by area? 2) What is its capital?",
-  "Do retrieve": "Russia is the largest country in Europe by area (European part). Its capital is Moscow.",
-  "Do answer": "The capital of the largest country in Europe (Russia) is Moscow.",
+  "Decompose this question": "Sub-questions: 1) What is the largest country in Europe by area? 2) What is its capital?",
+  "Find answers": "Russia is the largest country in Europe by area (European part). Its capital is Moscow.",
+  "Given the retrieved facts": "Moscow",
   "Compare": "A",
-  "default": "The answer is Moscow."
+  "default": "Moscow"
 }

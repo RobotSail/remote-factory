@@ -66,7 +66,8 @@ def build_workflow() -> WorkflowSpec:
                     "question based on the available documents and search "
                     "results.\n"
                     "Documents: {input}\n"
-                    "Answer:"
+                    "Answer:\n"
+                    "Output ONLY the answer in 1-5 words, no explanation."
                 ),
             ),
         ],

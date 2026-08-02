@@ -118,3 +118,5 @@ class ExecutionState:
     trace: TraceTree
     step: int = 0
     budget_remaining: int = 50
+    user_input: str = ""
+    node_outputs: dict[str, str] = field(default_factory=dict)

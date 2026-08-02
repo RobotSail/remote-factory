@@ -60,6 +60,7 @@ def init(
         trace=trace,
         step=0,
         budget_remaining=50,
+        user_input=user_input,
     )
 
 
@@ -74,7 +75,15 @@ def sample(
     weights = [p.weight for p in state.belief.particles]
     chosen = rng.choices(state.belief.particles, weights=weights, k=1)[0]
 
-    prompt = node.theta_prior.replace("{input}", chosen.brief)
+    if not state.node_outputs:
+        data_input = state.user_input
+    else:
+        data_input = list(state.node_outputs.values())[-1]
+
+    prompt = node.theta_prior.replace("{input}", data_input)
+    if chosen.brief:
+        prompt = f"[Strategy hint: {chosen.brief}]\n\n{prompt}"
+
     if node.effect == "effectful":
         prompt = f"[EFFECTFUL] {prompt}"
 
@@ -90,6 +99,7 @@ def sample(
         belief=new_belief,
     )
     new_state.trace.add_step(node.id, checkpoint_id=f"step-{new_state.step}")
+    new_state.node_outputs = {**state.node_outputs, node.id: output}
     return new_state, output
 
 

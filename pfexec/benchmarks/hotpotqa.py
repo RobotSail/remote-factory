@@ -72,7 +72,8 @@ def build_workflow() -> WorkflowSpec:
                     "Combine the sub-answers below into a single, concise "
                     "final answer to the original question.\n"
                     "Sub-answers: {input}\n"
-                    "Final answer:"
+                    "Final answer:\n"
+                    "Output ONLY the answer in 1-5 words, no explanation."
                 ),
             ),
         ],

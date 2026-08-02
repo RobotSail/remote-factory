@@ -37,7 +37,7 @@ def build_workflow() -> WorkflowSpec:
             NodeSpec(
                 id="answer",
                 spec="Synthesize a final answer from retrieved information",
-                theta_prior="Given the retrieved facts, answer the original question: {input}",
+                theta_prior="Given the retrieved facts, answer the original question: {input}\nOutput ONLY the answer in 1-5 words, no explanation.",
             ),
         ],
         edges=[
