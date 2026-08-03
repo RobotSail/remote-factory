@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import subprocess
-import uuid
 
 from pfexec.dist.cc.belief_io import _get_backend, read_state, write_state
 from pfexec.dist.cc.compiler import compile
@@ -41,7 +40,7 @@ def _terminal_nodes(workflow: WorkflowSpec) -> list[str]:
     return [n.id for n in workflow.nodes if n.id not in sources]
 
 
-def _claude_call(prompt: str, system: str = "", session_id: str = "",
+def _claude_call(prompt: str, system: str = "",
                  backend: LLMBackend | None = None) -> str:
     if backend is not None:
         return backend.call(prompt, system=system)
@@ -50,8 +49,6 @@ def _claude_call(prompt: str, system: str = "", session_id: str = "",
         "claude", "--bare",
         "--disallowedTools", "Bash Read Edit Write Agent NotebookEdit WebFetch WebSearch",
     ]
-    if session_id:
-        cmd.extend(["--session-id", session_id])
     if system:
         cmd.extend(["--system-prompt", system])
     cmd.extend(["-p", prompt])
@@ -65,7 +62,6 @@ def _claude_call(prompt: str, system: str = "", session_id: str = "",
 def _run_orchestrated(workflow: WorkflowSpec, user_input: str, config: EngineConfig,
                       backend_mode: str = "claude") -> EngineResult:
     session = compile(workflow, config, user_input, backend_mode=backend_mode)
-    cc_session_id = str(uuid.uuid4())
 
     node_map = {n.id: n for n in workflow.nodes}
     order = _topo_order(workflow)
@@ -107,7 +103,7 @@ def _run_orchestrated(workflow: WorkflowSpec, user_input: str, config: EngineCon
                 prompt = f"[Strategy hint: {chosen.brief}]\n\n{prompt}"
 
         output = _claude_call(
-            prompt, system=node.spec, session_id=cc_session_id,
+            prompt, system=node.spec,
             backend=task_backend,
         )
 
@@ -133,7 +129,6 @@ def _run_orchestrated(workflow: WorkflowSpec, user_input: str, config: EngineCon
                 if rewind_nid in order:
                     idx = order.index(rewind_nid)
                     visited.discard(rewind_nid)
-                    cc_session_id = str(uuid.uuid4())
                     write_state(session.root / "state.json", state)
                     continue
 
