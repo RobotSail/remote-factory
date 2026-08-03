@@ -225,17 +225,16 @@ def test_agentic_skill_gen():
         session_dir = Path(tmp)
         md = generate_agentic(workflow, config, session_dir)
 
-        assert "pfexec Agentic Execution" in md
+        assert "pfexec Agentic Protocol" in md
         assert "decompose" in md
         assert "retrieve" in md
         assert "answer" in md
-        assert "## Available Tools" in md
         assert "## Protocol" in md
-        assert "## Workflow Nodes" in md
+        assert "## Nodes (execute in this order)" in md
         assert str(session_dir) in md
 
 
-def test_agentic_skill_has_tools():
+def test_agentic_skill_has_protocol():
     workflow = _workflow()
     config = _config()
 
@@ -243,10 +242,58 @@ def test_agentic_skill_has_tools():
         session_dir = Path(tmp)
         md = generate_agentic(workflow, config, session_dir)
 
-        assert "pfexec.dist.cc.belief_io init" in md
-        assert "pfexec.dist.cc.belief_io sample" in md
-        assert "pfexec.dist.cc.belief_io observe" in md
-        assert "pfexec.dist.cc.belief_io fork-check" in md
+        assert "python3 -m pfexec.dist.cc.belief_io sample" in md
+        assert "fork_status.txt" in md
+        assert "PostToolUse" in md or "hook automatically runs" in md
+        assert "## Completion" in md
+
+
+def test_agentic_settings_generated():
+    workflow = _workflow()
+    config = _config()
+    result = _run_agentic(workflow, "What is X?", config, backend_mode="mock")
+
+    session_root = result.final_state.trace.root.node_id
+    # Find the session dir from the state file written during the run
+    # The agentic runner creates settings in the session dir
+    # We verify via a fresh compile + generate_settings call
+    from pfexec.dist.cc.hooks import generate_settings
+
+    with tempfile.TemporaryDirectory() as tmp:
+        session_dir = Path(tmp)
+        (session_dir / "hooks").mkdir(parents=True)
+        (session_dir / "node_outputs").mkdir()
+        generate_settings(session_dir, config, "mock")
+
+        settings_path = session_dir / ".claude" / "settings.json"
+        assert settings_path.exists()
+        settings = json.loads(settings_path.read_text())
+        assert "hooks" in settings
+        assert "PostToolUse" in settings["hooks"]
+        hooks = settings["hooks"]["PostToolUse"]
+        assert len(hooks) == 1
+        assert hooks[0]["matcher"] == "Write"
+        assert "write_observer.sh" in hooks[0]["hooks"][0]["command"]
+
+
+def test_agentic_write_observer_executable():
+    from pfexec.dist.cc.hooks import generate_settings
+
+    workflow = _workflow()
+    config = _config()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        session_dir = Path(tmp)
+        (session_dir / "hooks").mkdir(parents=True)
+        generate_settings(session_dir, config, "mock")
+
+        observer = session_dir / "hooks" / "write_observer.sh"
+        assert observer.exists()
+        assert os.access(observer, os.X_OK)
+        content = observer.read_text()
+        assert "pfexec.dist.cc.belief_io observe" in content
+        assert "pfexec.dist.cc.belief_io fork-check" in content
+        assert str(session_dir) in content
 
 
 def test_agentic_dry_run():

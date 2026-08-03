@@ -96,98 +96,86 @@ def generate(workflow: WorkflowSpec, config: EngineConfig) -> str:
 
 
 def generate_agentic(workflow: WorkflowSpec, config: EngineConfig,
-                     session_dir: Path) -> str:
+                     session_dir: Path, backend_mode: str = "claude") -> str:
     node_map = {n.id: n for n in workflow.nodes}
     order = _topo_order(workflow)
     terminal = _terminal_nodes(workflow)
     terminal_id = terminal[0] if terminal else order[-1]
 
     lines: list[str] = []
-    lines.append(f"# {workflow.name} — pfexec Agentic Execution")
+    lines.append(f"# {workflow.name} — pfexec Agentic Protocol")
     lines.append("")
-    lines.append("You are executing a pfexec workflow. You have access to pfexec CLI tools via Bash.")
+    lines.append(
+        "You are executing a pfexec probabilistic workflow. "
+        "Follow this protocol EXACTLY for each node."
+    )
     lines.append("")
 
-    lines.append("## Available Tools")
-    lines.append("")
-    lines.append("All tools are invoked via `python -m pfexec.dist.cc.belief_io`:")
-    lines.append("")
-    lines.append("### Initialize")
-    lines.append("```bash")
-    lines.append(
-        f"python -m pfexec.dist.cc.belief_io init "
-        f"--session {session_dir} --workflow {session_dir}/workflow.json "
-        f"--input \"...\" --particles {config.n_particles} --backend claude"
-    )
-    lines.append("```")
-    lines.append("")
-    lines.append("### Before each node — Sample")
-    lines.append("```bash")
-    lines.append(
-        f"python -m pfexec.dist.cc.belief_io sample "
-        f"--session {session_dir} --node <node_id> --backend claude"
-    )
-    lines.append("```")
-    lines.append("Reads belief state, writes hooks/prompt.txt with conditioned prompt.")
-    lines.append("")
-    lines.append("### After each node — Observe")
-    lines.append("```bash")
-    lines.append(
-        f"python -m pfexec.dist.cc.belief_io observe "
-        f"--session {session_dir} --node <node_id> --backend claude"
-    )
-    lines.append("```")
-    lines.append("First write your output to node_outputs/<node_id>.txt, then run observe.")
-    lines.append("")
-    lines.append("### After effectful nodes — Fork Check")
-    lines.append("```bash")
-    lines.append(
-        f"python -m pfexec.dist.cc.belief_io fork-check "
-        f"--session {session_dir} --node <node_id> "
-        f"--tau {config.tau} --max-forks {config.max_forks} --backend claude"
-    )
-    lines.append("```")
-    lines.append("Prints FORK or CONTINUE.")
-    lines.append("")
-
-    lines.append("## Workflow Nodes (execute in order)")
-    lines.append("")
-    for nid in order:
-        node = node_map[nid]
-        lines.append(f"- **{nid}**: role=`{node.spec}`, effect=`{node.effect}`")
+    lines.append("## Session Directory")
+    lines.append(f"All paths are relative to: {session_dir}")
     lines.append("")
 
     lines.append("## Protocol")
     lines.append("")
-    lines.append("For each node in order:")
+    lines.append("For EACH node listed below, in order:")
     lines.append("")
-    for i, nid in enumerate(order, 1):
+
+    lines.append("### Before the node")
+    lines.append("Run this command to get the conditioned prompt:")
+    lines.append("```bash")
+    lines.append(
+        f"python3 -m pfexec.dist.cc.belief_io sample "
+        f"--session {session_dir} --node <NODE_ID> --backend {backend_mode}"
+    )
+    lines.append(f"cat {session_dir}/hooks/prompt.txt")
+    lines.append("```")
+    lines.append("Read the output of prompt.txt — this is your task instruction for this node.")
+    lines.append("")
+
+    lines.append("### Execute the node")
+    lines.append(
+        "Perform the task described in prompt.txt. Think carefully and produce your answer."
+    )
+    lines.append("")
+
+    lines.append("### After the node")
+    lines.append("Write your output to the node output file:")
+    lines.append("```bash")
+    lines.append(f"cat > {session_dir}/node_outputs/<NODE_ID>.txt << PFEXEC_OUTPUT")
+    lines.append("<YOUR OUTPUT HERE>")
+    lines.append("PFEXEC_OUTPUT")
+    lines.append("```")
+    lines.append("")
+    lines.append(
+        "Note: A PostToolUse hook automatically runs observe and fork-check after you write."
+    )
+    lines.append("")
+    lines.append("Then check the fork status:")
+    lines.append("```bash")
+    lines.append(f"cat {session_dir}/hooks/fork_status.txt")
+    lines.append("```")
+    lines.append(
+        "- If it says FORK: read state.json to find the rewound pointer, "
+        "then go back to that node and re-execute from there."
+    )
+    lines.append("- If it says CONTINUE: proceed to the next node.")
+    lines.append("")
+
+    lines.append("## Nodes (execute in this order)")
+    lines.append("")
+    for nid in order:
         node = node_map[nid]
-        lines.append(f"### Step {i}: {nid}")
-        lines.append("")
-        lines.append(f"1. Run: `python -m pfexec.dist.cc.belief_io sample "
-                     f"--session {session_dir} --node {nid} --backend claude`")
-        lines.append("2. Read `hooks/prompt.txt` for the conditioned prompt.")
-        lines.append("3. Execute the task described in the prompt.")
-        lines.append(f"4. Write your output to `node_outputs/{nid}.txt` "
-                     "using the Write tool or echo.")
-        lines.append(f"5. Run: `python -m pfexec.dist.cc.belief_io observe "
-                     f"--session {session_dir} --node {nid} --backend claude`")
-        if node.effect == "effectful":
-            lines.append(f"6. Run: `python -m pfexec.dist.cc.belief_io fork-check "
-                         f"--session {session_dir} --node {nid} "
-                         f"--tau {config.tau} --max-forks {config.max_forks} --backend claude`")
-            lines.append("   - If FORK: read `state.json` for the rewound pointer "
-                         "and go back to that node.")
-            lines.append("   - If CONTINUE: proceed to the next step.")
-        else:
-            lines.append("6. Continue to the next step.")
+        lines.append(f"### Node: {nid}")
+        lines.append(f"- Role: {node.spec}")
+        lines.append(f"- Effect: {node.effect}")
         lines.append("")
 
-    lines.append("## Output")
-    lines.append("")
-    lines.append(f"After all nodes complete, report the content of "
-                 f"`node_outputs/{terminal_id}.txt`.")
+    lines.append("## Completion")
+    lines.append("After all nodes are done, read the terminal node output:")
+    lines.append("```bash")
+    lines.append(f"cat {session_dir}/node_outputs/{terminal_id}.txt")
+    lines.append("```")
+    lines.append("Report this as your final answer.")
     lines.append("")
 
     return "\n".join(lines)

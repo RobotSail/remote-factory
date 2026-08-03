@@ -146,12 +146,14 @@ def _run_orchestrated(workflow: WorkflowSpec, user_input: str, config: EngineCon
 
 def _run_agentic(workflow: WorkflowSpec, user_input: str, config: EngineConfig,
                  backend_mode: str = "claude") -> EngineResult:
+    from pfexec.dist.cc.hooks import generate_settings
     from pfexec.dist.cc.skill_gen import generate_agentic
 
     session = compile(workflow, config, user_input, backend_mode=backend_mode)
 
-    skill_md = generate_agentic(workflow, config, session.root)
+    skill_md = generate_agentic(workflow, config, session.root, backend_mode)
     session.skill_path.write_text(skill_md)
+    generate_settings(session.root, config, backend_mode)
 
     if backend_mode == "mock":
         mock_backend = DeterministicBackend(default="mock agentic output")
@@ -166,13 +168,17 @@ def _run_agentic(workflow: WorkflowSpec, user_input: str, config: EngineConfig,
             state.budget_remaining -= 1
         write_state(session.root / "state.json", state)
     else:
+        settings_path = session.root / ".claude" / "settings.json"
         subprocess.run(
-            ["claude", "--bare",
-             "--allowedTools", "Bash(python *) Write Read",
+            ["claude",
+             "--settings", str(settings_path),
              "--system-prompt-file", str(session.skill_path),
-             "-p", f"Execute the {workflow.name} workflow for this input: {user_input}"],
+             "--allowedTools", "Bash Read Write",
+             "--dangerously-skip-permissions",
+             "-p", f"Execute the {workflow.name} workflow for: {user_input}"],
             capture_output=True, text=True,
-            timeout=config.max_steps * 60,
+            timeout=config.max_steps * 120,
+            cwd=str(session.root),
         )
 
     state = read_state(session.root / "state.json")
