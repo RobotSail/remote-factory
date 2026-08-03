@@ -9,8 +9,8 @@ from pathlib import Path
 
 from pfexec.dist.cc.belief_io import read_state, state_from_dict, state_to_dict, write_state
 from pfexec.dist.cc.compiler import compile
-from pfexec.dist.cc.runner import run
-from pfexec.dist.cc.skill_gen import generate
+from pfexec.dist.cc.runner import _run_agentic, _run_orchestrated, run
+from pfexec.dist.cc.skill_gen import generate, generate_agentic
 from pfexec.engine import EngineConfig
 from pfexec.examples.multi_step_qa import build_workflow
 from pfexec.state import Belief, ExecutionState, Particle, TraceNode, TraceTree
@@ -188,6 +188,76 @@ def test_dry_run_produces_result():
     assert len(result.output) > 0
     assert result.final_state.pointer is not None
     assert len(result.final_state.node_outputs) == 3
+
+
+def test_orchestrated_dry_run():
+    workflow = _workflow()
+    config = _config()
+    result = _run_orchestrated(workflow, "What is the capital of France?", config,
+                               backend_mode="mock")
+
+    assert result.terminated_by == "complete"
+    assert result.steps_taken == 3
+    assert isinstance(result.output, str)
+    assert len(result.output) > 0
+    assert result.final_state.pointer is not None
+    assert len(result.final_state.node_outputs) == 3
+    for nid in ["decompose", "retrieve", "answer"]:
+        assert nid in result.final_state.node_outputs
+        assert result.final_state.node_outputs[nid] == "mock answer"
+
+
+def test_orchestrated_preserves_node_outputs_on_disk():
+    workflow = _workflow()
+    config = _config()
+    session = compile(workflow, config, "test", backend_mode="mock")
+    result = _run_orchestrated(workflow, "test", config, backend_mode="mock")
+
+    assert result.steps_taken == 3
+    assert len(result.all_outputs) == 3
+
+
+def test_agentic_skill_gen():
+    workflow = _workflow()
+    config = _config()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        session_dir = Path(tmp)
+        md = generate_agentic(workflow, config, session_dir)
+
+        assert "pfexec Agentic Execution" in md
+        assert "decompose" in md
+        assert "retrieve" in md
+        assert "answer" in md
+        assert "## Available Tools" in md
+        assert "## Protocol" in md
+        assert "## Workflow Nodes" in md
+        assert str(session_dir) in md
+
+
+def test_agentic_skill_has_tools():
+    workflow = _workflow()
+    config = _config()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        session_dir = Path(tmp)
+        md = generate_agentic(workflow, config, session_dir)
+
+        assert "pfexec.dist.cc.belief_io init" in md
+        assert "pfexec.dist.cc.belief_io sample" in md
+        assert "pfexec.dist.cc.belief_io observe" in md
+        assert "pfexec.dist.cc.belief_io fork-check" in md
+
+
+def test_agentic_dry_run():
+    workflow = _workflow()
+    config = _config()
+    result = _run_agentic(workflow, "What is X?", config, backend_mode="mock")
+
+    assert result.terminated_by == "complete"
+    assert len(result.all_outputs) == 3
+    for nid in ["decompose", "retrieve", "answer"]:
+        assert nid in result.final_state.node_outputs
 
 
 def test_session_dir_cleanup():
