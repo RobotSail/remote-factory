@@ -31,27 +31,31 @@ def init(
     rng: random.Random | None = None,
 ) -> ExecutionState:
     rng = rng or random.Random()
-    prompt = (
-        f"You are generating diverse execution strategies for a workflow.\n"
-        f"Workflow: {workflow.name}\n"
-        f"Input: {user_input}\n"
-        f"Generate {n_particles} diverse, concise execution plan briefs "
-        f"as a JSON array of strings."
-    )
-    raw = backend.call(prompt)
-    try:
-        cleaned = _extract_json(raw)
-        briefs = json.loads(cleaned)
-        if not isinstance(briefs, list):
+
+    if n_particles <= 1:
+        # N=1: deterministic mode, no brief generation needed
+        particles = [Particle(brief="", weight=1.0)]
+    else:
+        prompt = (
+            f"You are generating diverse execution strategies for a workflow.\n"
+            f"Workflow: {workflow.name}\n"
+            f"Input: {user_input}\n"
+            f"Generate {n_particles} diverse, concise execution plan briefs "
+            f"as a JSON array of strings."
+        )
+        raw = backend.call(prompt)
+        try:
+            cleaned = _extract_json(raw)
+            briefs = json.loads(cleaned)
+            if not isinstance(briefs, list):
+                briefs = [raw]
+        except (json.JSONDecodeError, TypeError):
             briefs = [raw]
-    except (json.JSONDecodeError, TypeError):
-        briefs = [raw]
 
-    while len(briefs) < n_particles:
-        briefs.append(f"plan-{len(briefs)}")
-    briefs = briefs[:n_particles]
-
-    particles = [Particle(brief=b, weight=1.0 / n_particles) for b in briefs]
+        while len(briefs) < n_particles:
+            briefs.append(f"plan-{len(briefs)}")
+        briefs = briefs[:n_particles]
+        particles = [Particle(brief=b, weight=1.0 / n_particles) for b in briefs]
     belief = Belief(particles=particles)
     trace = TraceTree(root=TraceNode(node_id=workflow.entry, checkpoint_id="init"))
     return ExecutionState(
@@ -81,7 +85,17 @@ def sample(
         data_input = list(state.node_outputs.values())[-1]
 
     prompt = node.theta_prior.replace("{input}", data_input)
-    if chosen.brief:
+
+    # Only inject strategy hint when there is genuine posterior diversity
+    n = len(state.belief.particles)
+    uniform_weight = 1.0 / n if n > 0 else 1.0
+    should_hint = (
+        n > 1
+        and chosen.brief
+        and not chosen.brief.startswith("plan-")
+        and chosen.weight > uniform_weight * 1.2
+    )
+    if should_hint:
         prompt = f"[Strategy hint: {chosen.brief}]\n\n{prompt}"
 
     if node.effect == "effectful":
@@ -134,15 +148,27 @@ def observe(
             total_comparisons[i] += 1
             total_comparisons[j] += 1
 
+    # Check if comparisons produced meaningful signal
+    win_rates = []
     for i in range(n):
         if total_comparisons[i] > 0:
-            win_rate = wins[i] / total_comparisons[i]
-            particles[i].weight *= (0.5 + win_rate)
+            win_rates.append(wins[i] / total_comparisons[i])
+
+    max_deviation = max((abs(wr - 0.5) for wr in win_rates), default=0.0)
+    has_signal = max_deviation > 0.1
+
+    if has_signal:
+        for i in range(n):
+            if total_comparisons[i] > 0:
+                win_rate = wins[i] / total_comparisons[i]
+                particles[i].weight *= (0.5 + win_rate)
+
+    for i in range(n):
         particles[i].evidence += f" | {observation}"
 
     state.belief.normalize()
 
-    if state.belief.ess() < n / 2:
+    if has_signal and state.belief.ess() < n / 2:
         state.belief.resample()
 
     return state
