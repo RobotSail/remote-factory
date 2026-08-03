@@ -1,0 +1,93 @@
+"""Generate SKILL.md playbook from pfexec IR."""
+
+from __future__ import annotations
+
+from pfexec.engine import EngineConfig
+from pfexec.ir import WorkflowSpec
+
+
+def _topo_order(workflow: WorkflowSpec) -> list[str]:
+    adj: dict[str, list[str]] = {n.id: [] for n in workflow.nodes}
+    in_degree: dict[str, int] = {n.id: 0 for n in workflow.nodes}
+    for e in workflow.edges:
+        adj[e.source].append(e.target)
+        in_degree[e.target] = in_degree.get(e.target, 0) + 1
+
+    queue = [workflow.entry] if workflow.entry else [
+        nid for nid, deg in in_degree.items() if deg == 0
+    ]
+    order: list[str] = []
+    while queue:
+        node = queue.pop(0)
+        order.append(node)
+        for neighbor in adj.get(node, []):
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
+    return order
+
+
+def _terminal_nodes(workflow: WorkflowSpec) -> list[str]:
+    sources = {e.source for e in workflow.edges}
+    return [n.id for n in workflow.nodes if n.id not in sources]
+
+
+def generate(workflow: WorkflowSpec, config: EngineConfig) -> str:
+    node_map = {n.id: n for n in workflow.nodes}
+    order = _topo_order(workflow)
+    terminal = _terminal_nodes(workflow)
+    terminal_id = terminal[0] if terminal else order[-1]
+
+    lines: list[str] = []
+    lines.append(f"# {workflow.name}")
+    lines.append("")
+    lines.append("You are executing a pfexec workflow. Follow these steps exactly.")
+    lines.append("")
+    lines.append("## Setup")
+    lines.append("")
+    lines.append('SESSION_DIR is the directory containing this SKILL.md file.')
+    lines.append("")
+    lines.append("## Workflow Nodes")
+    lines.append("")
+
+    for nid in order:
+        node = node_map[nid]
+        lines.append(f"### {nid}")
+        lines.append(f"- **Role:** {node.spec}")
+        lines.append(f"- **Effect:** {node.effect}")
+        lines.append("")
+
+    lines.append("## Execution")
+    lines.append("")
+    lines.append("For each node in order, do the following:")
+    lines.append("")
+
+    for i, nid in enumerate(order, 1):
+        node = node_map[nid]
+        lines.append(f"### Step {i}: {nid}")
+        lines.append("")
+        lines.append("1. Run the pre-step hook:")
+        lines.append("   ```bash")
+        lines.append(f"   bash hooks/pre_step.sh {nid}")
+        lines.append("   ```")
+        lines.append("2. Read `hooks/prompt.txt` for the conditioned prompt.")
+        lines.append(f"3. Execute the task: **{node.spec}**")
+        lines.append("   Use the prompt from `hooks/prompt.txt` as your instructions.")
+        lines.append(f"4. Write your output to `node_outputs/{nid}.txt`")
+        lines.append("5. Run the post-step hook:")
+        lines.append("   ```bash")
+        lines.append(f"   bash hooks/post_step.sh {nid}")
+        lines.append("   ```")
+        lines.append("6. Read `hooks/fork_status.txt`.")
+        lines.append("   - If it says `FORK`, re-read `state.json` to find the rewound pointer,")
+        lines.append("     then go back to the step for that node.")
+        lines.append("   - If it says `CONTINUE`, proceed to the next step.")
+        lines.append("")
+
+    lines.append("## Output")
+    lines.append("")
+    lines.append(f"After all steps complete, read `node_outputs/{terminal_id}.txt`")
+    lines.append("and report the final result to the user.")
+    lines.append("")
+
+    return "\n".join(lines)
