@@ -59,6 +59,8 @@ __all__ = [
     "spec_update_workflow",
     "parallel_improve_workflow",
     "founder_workflow",
+    "frontend_design_workflow",
+    "frontend_design_scan_workflow",
     "register_all",
 ]
 
@@ -2266,6 +2268,747 @@ def spec_update_workflow() -> Workflow:
     )
 
 
+def _design_researcher_nodes() -> dict[str, AgentNode]:
+    """Shared researcher nodes used by both frontend-design and frontend-design-scan."""
+    return {
+        "researcher_tokens": AgentNode(
+            id="researcher_tokens",
+            role=AgentRole.RESEARCHER,
+            prompt_template=(
+                "Design token research. "
+                "Find the project's main CSS/theme files (index.css, globals.css, "
+                "theme.ts, tailwind.config, etc.). Extract every color token, CSS "
+                "custom property, and theme variable with values for all theme modes. "
+                "Search all component files for hardcoded color values (hex, rgb, hsl) "
+                "that bypass the token system. Count frequencies. "
+                "Document the font families, spacing scale, and border-radius tiers. "
+                "Write to .factory/design-system/token-audit.md."
+            ),
+            writes={".factory/design-system/token-audit.md"},
+        ),
+        "researcher_components": AgentNode(
+            id="researcher_components",
+            role=AgentRole.RESEARCHER,
+            prompt_template=(
+                "Component inventory research. "
+                "Find the project's component library directory and catalog every "
+                "shared component — names, props, variant systems. Identify the "
+                "primitive UI library (Radix, MUI, Chakra, Headless UI, etc.) and "
+                "which components wrap it. List feature-specific components. "
+                "Document UI dependencies from package.json. Map composition patterns. "
+                "Write to .factory/design-system/component-inventory.md."
+            ),
+            writes={".factory/design-system/component-inventory.md"},
+        ),
+        "researcher_patterns": AgentNode(
+            id="researcher_patterns",
+            role=AgentRole.RESEARCHER,
+            prompt_template=(
+                "Layout and pattern research. "
+                "Read layout.tsx, router.tsx, and every page.tsx in feature modules. "
+                "Document the shell structure, page templates, data-fetching patterns "
+                "(e.g. TanStack Query, SWR, Apollo, RTK Query), state management "
+                "(e.g. Zustand, Redux, Pinia, Context), error handling, "
+                "motion/animation vocabulary, and accessibility patterns. "
+                "Write to .factory/design-system/pattern-library.md."
+            ),
+            writes={".factory/design-system/pattern-library.md"},
+        ),
+        "researcher_ux": AgentNode(
+            id="researcher_ux",
+            role=AgentRole.RESEARCHER,
+            prompt_template=(
+                "UX quality research. "
+                "Analyze the project's experiential layer: animation choreography "
+                "(stagger timing, easing curves, entrance sequences, coordinated "
+                "transitions, duration scale, exit animations, loading states), "
+                "information hierarchy (heading structure, visual weight, content "
+                "density, progressive disclosure, data presentation for non-technical "
+                "users), and user-friendliness patterns (plain language, contextual "
+                "help, onboarding/empty states, error messages, feedback patterns). "
+                "Write to .factory/design-system/ux-patterns.md."
+            ),
+            writes={".factory/design-system/ux-patterns.md"},
+        ),
+    }
+
+
+# ── W₁₂: Frontend Design Mode ───────────────────────────────────
+
+
+def frontend_design_workflow() -> Workflow:
+    """W₁₂: Frontend Design Mode — Feature-to-UI Pipeline.
+
+    Fork(5 design researchers) → Join → CEO gate → Design Auditor →
+    CEO gate → Spec Writer → User gate → Builder → Build gate →
+    Render gate → CI gate → deep-QA (design variant) →
+    Consistency gate(max 3) → Doc freshness → Precheck → Archivist(async)
+    """
+    nodes: dict[str, Any] = {}
+    edges: list[Edge] = []
+
+    # ── Phase 1: Design System Research (4 parallel researchers) ──
+
+    nodes["fork_design_research"] = ForkNode(
+        id="fork_design_research",
+        targets=[
+            "researcher_tokens",
+            "researcher_components",
+            "researcher_patterns",
+            "researcher_ux",
+            "researcher_infra",
+        ],
+    )
+
+    nodes.update(_design_researcher_nodes())
+
+    nodes["researcher_infra"] = AgentNode(
+        id="researcher_infra",
+        role=AgentRole.RESEARCHER,
+        prompt_template=(
+            "Infrastructure context research. "
+            "Discover the backend deployment architecture by reading Dockerfile, "
+            "docker-compose.yml, k8s/ manifests, and Helm charts. Identify what "
+            "environment the backend runs in (container, K8s pod, VM, serverless) "
+            "and what system tools are available inside the container. "
+            "Examine the backend API architecture: framework (FastAPI, Flask, etc.), "
+            "router registration pattern, how new endpoints are added, existing "
+            "endpoint inventory. Map resource access patterns: how the backend "
+            "reaches external resources — K8s API via in-cluster config, SSH "
+            "backends, database connections, external APIs. Document data sources: "
+            "where data comes from (K8s node resources, subprocess calls, database "
+            "queries, external APIs) and which client libraries are available. "
+            "Write to .factory/design-system/infra-context.md."
+        ),
+        writes={".factory/design-system/infra-context.md"},
+    )
+
+    # ── Join + Research Quality Gate ──
+
+    nodes["join_design_research"] = JoinNode(
+        id="join_design_research",
+        sources=[
+            "researcher_tokens", "researcher_components", "researcher_patterns",
+            "researcher_ux", "researcher_infra",
+        ],
+        reads={
+            ".factory/design-system/token-audit.md",
+            ".factory/design-system/component-inventory.md",
+            ".factory/design-system/pattern-library.md",
+            ".factory/design-system/ux-patterns.md",
+            ".factory/design-system/infra-context.md",
+        },
+    )
+
+    nodes["gate_research"] = GateNode(
+        id="gate_research",
+        evaluator_type="agent",
+        evaluator_role=AgentRole.CEO,
+        gate_prompt=(
+            "Verify all five design research artifacts exist and are substantive. "
+            "token-audit.md must list actual CSS custom properties. "
+            "component-inventory.md must list actual .tsx files with component names. "
+            "pattern-library.md must describe actual page layout patterns. "
+            "ux-patterns.md must describe actual animation, hierarchy, or UX patterns. "
+            "infra-context.md must describe the deployment environment and backend "
+            "API architecture. "
+            "RELOOP if any artifact is empty or clearly fabricated. "
+            "PROCEED if all five have real data."
+        ),
+        reads={
+            ".factory/design-system/token-audit.md",
+            ".factory/design-system/component-inventory.md",
+            ".factory/design-system/pattern-library.md",
+            ".factory/design-system/ux-patterns.md",
+            ".factory/design-system/infra-context.md",
+        },
+    )
+
+    # ── Phase 2: Design Auditor (synthesize baseline + rules) ──
+
+    nodes["design_auditor"] = AgentNode(
+        id="design_auditor",
+        role=AgentRole.STRATEGIST,
+        prompt_template=(
+            "Design system auditor. "
+            "Read .factory/design-system/token-audit.md, component-inventory.md, "
+            "pattern-library.md, ux-patterns.md, and infra-context.md. "
+            "Synthesize into two outputs: "
+            "(1) .factory/design-system/design-baseline.json — valid JSON with "
+            "token_registry, component_inventory, pattern_library, ux_patterns, "
+            "and infrastructure keys. The infrastructure key must include: "
+            "deployment (type, orchestrator), container_capabilities (available "
+            "and unavailable tools), resource_access (how the backend reaches "
+            "external resources), api_architecture (framework, router pattern, "
+            "existing endpoints), and data_sources (where data comes from). "
+            "Extract actual values from the research, do not fabricate. "
+            "(2) .factory/design-system/rules.md — HARD RULES section "
+            "(token purity, font family, component wrappers, dark mode parity, "
+            "accessibility floor, infrastructure fidelity — no unavailable system "
+            "tools, use established resource access patterns, follow API registration "
+            "pattern) and SOFT GUIDELINES section (spacing, border-radius, "
+            "motion choreography, icons, page structure, status colors, information "
+            "hierarchy, user-friendliness). "
+            "If previous design-baseline.json exists, merge and flag drift. "
+            "Preserve any existing MANUAL OVERRIDES section in rules.md."
+        ),
+        reads={
+            ".factory/design-system/token-audit.md",
+            ".factory/design-system/component-inventory.md",
+            ".factory/design-system/pattern-library.md",
+            ".factory/design-system/ux-patterns.md",
+            ".factory/design-system/infra-context.md",
+        },
+        writes={
+            ".factory/design-system/design-baseline.json",
+            ".factory/design-system/rules.md",
+        },
+    )
+
+    nodes["gate_audit"] = GateNode(
+        id="gate_audit",
+        evaluator_type="agent",
+        evaluator_role=AgentRole.CEO,
+        gate_prompt=(
+            "Verify design-baseline.json is valid JSON with token_registry, "
+            "component_inventory, and pattern_library keys. "
+            "Verify rules.md contains both HARD RULES and SOFT GUIDELINES sections. "
+            "RELOOP if malformed. PROCEED if structurally valid."
+        ),
+        reads={
+            ".factory/design-system/design-baseline.json",
+            ".factory/design-system/rules.md",
+        },
+    )
+
+    # ── Phase 3: UI Spec Writer + User Approval ──
+
+    nodes["spec_writer"] = AgentNode(
+        id="spec_writer",
+        role=AgentRole.STRATEGIST,
+        prompt_template=(
+            "UI spec writer. "
+            "Read .factory/design-system/design-baseline.json, rules.md, and "
+            "infra-context.md for design system and infrastructure constraints. "
+            "The feature goal is in the CEO's task prompt (from --focus). "
+            "Produce .factory/design-system/ui-spec.md with sections: Feature "
+            "Description, Component Plan (reference existing components, justify "
+            "any new ones), Token Usage (map each element to specific tokens), "
+            "Layout, State Management, Dark Mode (both light and dark values), "
+            "Accessibility, Motion, Visual Mockups, Constraints. "
+            "For every data-fetching component, specify what it shows when the "
+            "backend API returns 404 or is unreachable — this must be a designed "
+            "empty state with guidance text, not an error message. "
+            "List all API endpoints the feature depends on and whether each "
+            "already exists in the backend. If an endpoint is missing, specify "
+            "the backend route, data source, access method (referencing "
+            "infra-context.md), and response model so the Builder can implement "
+            "it using only tools available in the deployment environment. "
+            "VISUAL MOCKUPS: for each designed state (loading, populated, empty, "
+            "unreachable), draw an ASCII wireframe using box-drawing characters "
+            "showing the card layout, labels, status indicators, and content "
+            "hierarchy. The user approves the spec based on these mockups. "
+            "Be precise — reference actual component names and token values."
+        ),
+        reads={
+            ".factory/design-system/design-baseline.json",
+            ".factory/design-system/rules.md",
+            ".factory/design-system/infra-context.md",
+        },
+        writes={".factory/design-system/ui-spec.md"},
+    )
+
+    nodes["gate_spec"] = GateNode(
+        id="gate_spec",
+        evaluator_type="user",
+        gate_prompt=(
+            "Review the UI spec. It describes what will be built and the design "
+            "constraints that will be enforced. PROCEED to approve implementation, "
+            "RELOOP with feedback to revise, HALT to abandon."
+        ),
+        reads={".factory/design-system/ui-spec.md"},
+    )
+
+    # ── Phase 4: Constrained Builder ──
+
+    nodes["builder"] = AgentNode(
+        id="builder",
+        role=AgentRole.BUILDER,
+        prompt_template=(
+            "Design-constrained builder. "
+            "Read .factory/design-system/ui-spec.md (the approved spec), "
+            "design-baseline.json (the design system), rules.md (the rules), "
+            "and infra-context.md (infrastructure constraints). "
+            "Implement exactly what the spec describes. Constraints: "
+            "only approved color tokens from the baseline, only declared font families, "
+            "only the project's shared component library (no direct primitive library "
+            "imports in feature code), established spacing values, dark mode pairs "
+            "required if the project uses dark mode, aria-labels on interactive "
+            "elements, the project's established icon library only. "
+            "CRITICAL: every data-fetching component must handle 3 states: "
+            "(1) loading/skeleton, (2) populated, (3) unavailable (API 404 or "
+            "network error). The unavailable state must show a designed message "
+            "like 'Coming soon' or 'Not yet configured' — NEVER 'Unable to load' "
+            "or 'Failed to fetch'. Treat missing backend APIs as expected. "
+            "END-TO-END: if the frontend calls a backend API that does not exist, "
+            "implement the backend endpoint too. Check the project's API routes — "
+            "the feature must work end-to-end, not just render a loading spinner. "
+            "INFRASTRUCTURE: when implementing backend endpoints, check "
+            "infra-context.md for deployment constraints. Use only system tools "
+            "available in the container. Use established resource access patterns "
+            "(e.g., K8s API client, not subprocess calls to unavailable tools). "
+            "Follow the existing API router registration pattern. "
+            "After implementation, start the dev server and verify the feature "
+            "renders without error messages. "
+            "Run tests. Commit and open a draft PR."
+        ),
+        reads={
+            ".factory/design-system/ui-spec.md",
+            ".factory/design-system/design-baseline.json",
+            ".factory/design-system/rules.md",
+            ".factory/design-system/infra-context.md",
+        },
+        writes={".factory/reviews/builder-latest.md"},
+    )
+
+    nodes["gate_build"] = GateNode(
+        id="gate_build",
+        evaluator_type="fn",
+        evaluator_command=(
+            "cd {project_path} && npx tsc --noEmit 2>&1 && npm run lint 2>&1 "
+            "&& echo PROCEED || echo FAIL"
+        ),
+        reads={".factory/reviews/builder-latest.md"},
+    )
+
+    # ── Phase 4b: Render Verification Gate ──
+
+    nodes["gate_render"] = GateNode(
+        id="gate_render",
+        evaluator_type="fn",
+        evaluator_command=(
+            "cd {project_path} && ( "
+            "ROOT='.'; "
+            "if [ -f package.json ] && node -e "
+            "\"process.exit(JSON.parse(require('fs').readFileSync("
+            "'package.json','utf8')).scripts?.dev?0:1)\" 2>/dev/null; then "
+            "ROOT='.'; "
+            "else for d in studio web app frontend client; do "
+            "if [ -f \"$d/package.json\" ] && node -e "
+            "\"process.exit(JSON.parse(require('fs').readFileSync("
+            "'$d/package.json','utf8')).scripts?.dev?0:1)\" 2>/dev/null; then "
+            "ROOT=\"$d\"; break; fi; done; fi; "
+            "if [ \"$ROOT\" = '.' ] && ! node -e "
+            "\"process.exit(JSON.parse(require('fs').readFileSync("
+            "'package.json','utf8')).scripts?.dev?0:1)\" 2>/dev/null; then "
+            "echo 'pass: no dev server script found'; exit 0; fi; "
+            "cd \"$ROOT\" && npm run dev </dev/null >/dev/null 2>&1 & "
+            "DEV_PID=$!; FOUND=0; "
+            "for i in $(seq 1 30); do "
+            "for port in 5173 3000 4200 8080; do "
+            "if curl -s -o /dev/null -w '%{http_code}' "
+            "http://localhost:$port 2>/dev/null | grep -qE '^(200|304)$'; then "
+            "FOUND=1; break 2; fi; done; "
+            "if ! kill -0 $DEV_PID 2>/dev/null; then "
+            "echo 'reloop: dev server crashed on startup'; exit 0; fi; "
+            "sleep 2; done; "
+            "kill $DEV_PID 2>/dev/null; wait $DEV_PID 2>/dev/null; "
+            "if [ \"$FOUND\" -eq 1 ]; then "
+            "echo 'pass: dev server started and responded'; "
+            "else echo 'reloop: dev server did not respond within 60s'; fi "
+            ")"
+        ),
+        reads={".factory/reviews/builder-latest.md"},
+    )
+
+    # ── Phase 4c: CI Verification Gate ──
+
+    nodes["gate_ci"] = GateNode(
+        id="gate_ci",
+        evaluator_type="fn",
+        evaluator_command=(
+            "cd {project_path} && ( "
+            "PR=$(gh pr view --json number -q .number 2>/dev/null) || true; "
+            "if [ -z \"$PR\" ]; then echo 'pass: no PR found'; exit 0; fi; "
+            "for i in $(seq 1 20); do "
+            "BUCKETS=$(gh pr checks \"$PR\" --json bucket "
+            "--jq '.[].bucket' 2>/dev/null) || true; "
+            "if [ -z \"$BUCKETS\" ]; then "
+            "echo 'pass: no CI checks configured'; exit 0; fi; "
+            "if echo \"$BUCKETS\" | grep -qE '^(fail|cancel)$'; then "
+            "NAMES=$(gh pr checks \"$PR\" --json name,bucket "
+            "--jq '[.[] | select(.bucket==\"fail\" or .bucket==\"cancel\") "
+            "| .name] | join(\", \")' 2>/dev/null); "
+            "echo \"reloop: CI failed for PR #$PR - $NAMES\"; exit 0; fi; "
+            "if ! echo \"$BUCKETS\" | grep -qE '^pending$'; then "
+            "echo 'pass: all CI checks passed'; exit 0; fi; "
+            "sleep 30; done; "
+            "echo 'reloop: CI timed out after 10 minutes' "
+            ")"
+        ),
+    )
+
+    # ── Phase 5: Design-Aware Deep QA ──
+
+    nodes["health_checker"] = AgentNode(
+        id="health_checker",
+        role=AgentRole.HEALTH_CHECKER,
+        prompt_template=(
+            "Design health check. Standard checks (tsc, lint, build) plus: "
+            "verify kebab-case file naming for new .tsx files, PascalCase exports, "
+            "no CSS custom property overrides of existing vars. "
+            "Dev server smoke test: start the dev server, verify it responds "
+            "with HTTP 200 on a common port (5173, 3000, 4200, 8080). "
+            "If the server crashes on startup, report as CRITICAL. "
+            "If no dev server command exists, skip this check."
+        ),
+        reads={
+            ".factory/reviews/builder-latest.md",
+            ".factory/design-system/design-baseline.json",
+        },
+        writes={".factory/reviews/health-check.md"},
+    )
+
+    nodes["code_reviewer"] = AgentNode(
+        id="code_reviewer",
+        role=AgentRole.CODE_REVIEWER,
+        prompt_template=(
+            "Design compliance review. Read .factory/design-system/rules.md first. "
+            "For each changed file check: color usage against the token registry, "
+            "component imports (no direct primitive library imports in feature code), "
+            "font usage against declared families, dark mode coverage, accessibility. "
+            "Use literal CRITICAL_FOUND for hard rule violations. "
+            "Use WARNING for soft guideline deviations."
+        ),
+        reads={
+            ".factory/reviews/builder-latest.md",
+            ".factory/design-system/rules.md",
+        },
+        writes={".factory/reviews/code-review.md"},
+    )
+
+    nodes["gate_review"] = GateNode(
+        id="gate_review",
+        evaluator_type="fn",
+        evaluator_command=(
+            "if grep -q 'CRITICAL_FOUND' "
+            "{project_path}/.factory/reviews/code-review.md; "
+            "then echo 'reloop: critical design violations found — builder must fix'; "
+            "else echo 'PROCEED'; fi"
+        ),
+        reads={".factory/reviews/code-review.md"},
+    )
+
+    nodes["consistency_tester"] = AgentNode(
+        id="consistency_tester",
+        role=AgentRole.ADVERSARIAL_TESTER,
+        timeout=600,
+        prompt_template=(
+            "Design consistency testing. Run all check scripts in "
+            ".factory/design-system/checks/ then perform soft checks: "
+            "spacing analysis, border-radius analysis, animation patterns, "
+            "icon consistency, status variant usage. "
+            "Output both .factory/reviews/adversarial_tester-latest.md "
+            "and .factory/design-system/consistency-report.json with "
+            "hard_failures, soft_warnings, and summary.verdict fields."
+        ),
+        reads={
+            ".factory/reviews/builder-latest.md",
+            ".factory/design-system/design-baseline.json",
+            ".factory/design-system/rules.md",
+        },
+        writes={
+            ".factory/reviews/adversarial-qa.md",
+            ".factory/design-system/consistency-report.json",
+        },
+    )
+
+    nodes["gate_consistency"] = GateNode(
+        id="gate_consistency",
+        evaluator_type="agent",
+        evaluator_role=AgentRole.CEO,
+        gate_prompt=(
+            "Read .factory/design-system/consistency-report.json. "
+            "If hard_failure_count > 0, RELOOP to builder with failure details. "
+            "If only soft_warnings exist, PROCEED (warnings surface in PR). "
+            "If clean, PROCEED."
+        ),
+        reads={
+            ".factory/reviews/adversarial-qa.md",
+            ".factory/design-system/consistency-report.json",
+        },
+    )
+
+    nodes["gate_doc_freshness"] = GateNode(
+        id="gate_doc_freshness",
+        evaluator_type="agent",
+        evaluator_role=AgentRole.CEO,
+        gate_prompt=DOC_FRESHNESS_GATE_PROMPT,
+        reads={".factory/reviews/adversarial-qa.md"},
+    )
+
+    nodes["gate_precheck"] = GateNode(
+        id="gate_precheck",
+        evaluator_type="fn",
+        evaluator_command="factory precheck {project_path} --score-before 0 --score-after 0",
+        reads={".factory/reviews/adversarial-qa.md"},
+    )
+
+    nodes["archivist_build"] = AgentNode(
+        id="archivist_build",
+        role=AgentRole.ARCHIVIST,
+        prompt_template="Archive the frontend-design cycle results.",
+        reads={".factory/reviews/adversarial-qa.md"},
+        writes={".factory/archive/build.md"},
+        blocking=False,
+    )
+
+    # ── Edges ──
+
+    edges = [
+        # Fork to researchers
+        Edge(source="fork_design_research", target="researcher_tokens"),
+        Edge(source="fork_design_research", target="researcher_components"),
+        Edge(source="fork_design_research", target="researcher_patterns"),
+        Edge(source="fork_design_research", target="researcher_ux"),
+        Edge(source="fork_design_research", target="researcher_infra"),
+        # Researchers to join
+        Edge(source="researcher_tokens", target="join_design_research"),
+        Edge(source="researcher_components", target="join_design_research"),
+        Edge(source="researcher_patterns", target="join_design_research"),
+        Edge(source="researcher_ux", target="join_design_research"),
+        Edge(source="researcher_infra", target="join_design_research"),
+        # Join → research gate
+        Edge(source="join_design_research", target="gate_research"),
+        # Research gate
+        Edge(source="gate_research", target="design_auditor", condition=VerdictType.PROCEED),
+        Edge(
+            source="gate_research",
+            target="fork_design_research",
+            condition=VerdictType.RELOOP,
+        ),
+        # Design auditor → audit gate
+        Edge(source="design_auditor", target="gate_audit"),
+        Edge(source="gate_audit", target="spec_writer", condition=VerdictType.PROCEED),
+        Edge(source="gate_audit", target="design_auditor", condition=VerdictType.RELOOP),
+        # Spec writer → user approval gate
+        Edge(source="spec_writer", target="gate_spec"),
+        Edge(source="gate_spec", target="builder", condition=VerdictType.PROCEED),
+        Edge(source="gate_spec", target="spec_writer", condition=VerdictType.RELOOP),
+        # Builder → build gate → render gate → CI gate
+        Edge(source="builder", target="gate_build"),
+        Edge(source="gate_build", target="gate_render", condition=VerdictType.PROCEED),
+        Edge(source="gate_build", target="builder", condition=VerdictType.RELOOP),
+        # Render verification gate
+        Edge(source="gate_render", target="gate_ci", condition=VerdictType.PROCEED),
+        Edge(source="gate_render", target="builder", condition=VerdictType.RELOOP),
+        # CI verification gate
+        Edge(source="gate_ci", target="health_checker", condition=VerdictType.PROCEED),
+        Edge(source="gate_ci", target="builder", condition=VerdictType.RELOOP),
+        # Deep-QA: health_checker → code_reviewer → gate_review → consistency_tester
+        Edge(source="health_checker", target="code_reviewer"),
+        Edge(source="code_reviewer", target="gate_review"),
+        Edge(
+            source="gate_review", target="consistency_tester", condition=VerdictType.PROCEED
+        ),
+        Edge(source="gate_review", target="builder", condition=VerdictType.RELOOP),
+        # Consistency tester → consistency gate
+        Edge(source="consistency_tester", target="gate_consistency"),
+        Edge(
+            source="gate_consistency",
+            target="gate_doc_freshness",
+            condition=VerdictType.PROCEED,
+        ),
+        Edge(source="gate_consistency", target="builder", condition=VerdictType.RELOOP),
+        # Doc freshness → precheck
+        Edge(
+            source="gate_doc_freshness",
+            target="gate_precheck",
+            condition=VerdictType.PROCEED,
+        ),
+        Edge(source="gate_doc_freshness", target="builder", condition=VerdictType.RELOOP),
+        # Precheck → archivist
+        Edge(source="gate_precheck", target="archivist_build", condition=VerdictType.PROCEED),
+        Edge(source="gate_precheck", target="archivist_build", condition=VerdictType.HALT),
+    ]
+
+    def trigger(state: ProjectState, ctx: dict[str, Any]) -> bool:
+        return ctx.get("mode") == "frontend-design"
+
+    return Workflow(
+        name="frontend-design",
+        nodes=nodes,
+        edges=edges,
+        start_node="fork_design_research",
+        trigger=trigger,
+    )
+
+
+# ── W₁₃: Frontend Design Scan — Continuous Health Monitoring ────
+
+
+def frontend_design_scan_workflow() -> Workflow:
+    """W₁₃: Frontend Design Scan — continuous design health monitoring.
+
+    Fork(4 design researchers) → Join → Auditor →
+    Fork(6 check scripts, full codebase) → Join →
+    Health report writer → Archivist(async)
+
+    No builder, no spec writer, no user gates — scan-only.
+    Designed for use with --loop for continuous hourly scanning.
+    """
+    nodes: dict[str, Any] = {}
+    edges: list[Edge] = []
+
+    # ── Phase 1: Design System Research (4 parallel researchers) ──
+
+    nodes["fork_scan_research"] = ForkNode(
+        id="fork_scan_research",
+        targets=[
+            "researcher_tokens",
+            "researcher_components",
+            "researcher_patterns",
+            "researcher_ux",
+        ],
+    )
+
+    nodes.update(_design_researcher_nodes())
+
+    nodes["join_scan_research"] = JoinNode(
+        id="join_scan_research",
+        sources=["researcher_tokens", "researcher_components", "researcher_patterns", "researcher_ux"],
+        reads={
+            ".factory/design-system/token-audit.md",
+            ".factory/design-system/component-inventory.md",
+            ".factory/design-system/pattern-library.md",
+            ".factory/design-system/ux-patterns.md",
+        },
+    )
+
+    # ── Phase 2: Auditor (synthesize baseline) ──
+
+    nodes["scan_auditor"] = AgentNode(
+        id="scan_auditor",
+        role=AgentRole.STRATEGIST,
+        prompt_template=(
+            "Design system auditor (scan mode). "
+            "Read all four research files: token-audit.md, component-inventory.md, "
+            "pattern-library.md, and ux-patterns.md. Synthesize into "
+            "design-baseline.json and rules.md. "
+            "If previous design-baseline.json exists, diff and report drift. "
+            "This is a scan-only run — no features will be built."
+        ),
+        reads={
+            ".factory/design-system/token-audit.md",
+            ".factory/design-system/component-inventory.md",
+            ".factory/design-system/pattern-library.md",
+            ".factory/design-system/ux-patterns.md",
+        },
+        writes={
+            ".factory/design-system/design-baseline.json",
+            ".factory/design-system/rules.md",
+        },
+    )
+
+    # ── Phase 3: Run all 6 check scripts (full codebase scan) ──
+
+    check_scripts = [
+        ("check_token_purity", "check-token-purity.sh"),
+        ("check_dark_mode", "check-dark-mode.sh"),
+        ("check_a11y", "check-a11y-baseline.sh"),
+        ("check_component_import", "check-component-import.sh"),
+        ("check_font_family", "check-font-family.sh"),
+        ("check_patterns", "check-patterns.sh"),
+    ]
+
+    nodes["fork_scan_checks"] = ForkNode(
+        id="fork_scan_checks",
+        targets=[name for name, _ in check_scripts],
+    )
+
+    for name, script in check_scripts:
+        nodes[name] = FnNode(
+            id=name,
+            command=(
+                f"cd {{project_path}} && SCAN_MODE=full "
+                f"bash .factory/design-system/checks/{script} --score"
+            ),
+            reads={".factory/design-system/design-baseline.json"},
+        )
+
+    nodes["join_scan_checks"] = JoinNode(
+        id="join_scan_checks",
+        sources=[name for name, _ in check_scripts],
+    )
+
+    # ── Phase 4: Health Report Writer ──
+
+    nodes["health_report_writer"] = AgentNode(
+        id="health_report_writer",
+        role=AgentRole.STRATEGIST,
+        prompt_template=(
+            "Design health report writer. "
+            "Read the output of all 6 design check scripts and the "
+            "design-baseline.json. Produce .factory/design-system/health-report.json "
+            "with overall_score (0.0-1.0), per-dimension scores (token_purity, "
+            "dark_mode_coverage, accessibility, component_wrapping, font_compliance, "
+            "pattern_adherence), issue counts, top issues list, trend data "
+            "(compare with previous report if exists), and actionable recommendations."
+        ),
+        reads={".factory/design-system/design-baseline.json"},
+        writes={".factory/design-system/health-report.json"},
+    )
+
+    # ── Phase 5: Archivist (async) ──
+
+    nodes["archivist_scan"] = AgentNode(
+        id="archivist_scan",
+        role=AgentRole.ARCHIVIST,
+        prompt_template="Archive the design scan results and health report.",
+        reads={".factory/design-system/health-report.json"},
+        writes={".factory/archive/design-scan.md"},
+        blocking=False,
+    )
+
+    # ── Edges ──
+
+    edges = [
+        # Fork to researchers
+        Edge(source="fork_scan_research", target="researcher_tokens"),
+        Edge(source="fork_scan_research", target="researcher_components"),
+        Edge(source="fork_scan_research", target="researcher_patterns"),
+        Edge(source="fork_scan_research", target="researcher_ux"),
+        # Researchers to join
+        Edge(source="researcher_tokens", target="join_scan_research"),
+        Edge(source="researcher_components", target="join_scan_research"),
+        Edge(source="researcher_patterns", target="join_scan_research"),
+        Edge(source="researcher_ux", target="join_scan_research"),
+        # Join → auditor
+        Edge(source="join_scan_research", target="scan_auditor"),
+        # Auditor → fork checks
+        Edge(source="scan_auditor", target="fork_scan_checks"),
+        # Fork to each check
+        *[Edge(source="fork_scan_checks", target=name) for name, _ in check_scripts],
+        # Each check to join
+        *[Edge(source=name, target="join_scan_checks") for name, _ in check_scripts],
+        # Join → health report
+        Edge(source="join_scan_checks", target="health_report_writer"),
+        # Health report → archivist
+        Edge(source="health_report_writer", target="archivist_scan"),
+    ]
+
+    def trigger(state: ProjectState, ctx: dict[str, Any]) -> bool:
+        return ctx.get("mode") == "frontend-design-scan"
+
+    return Workflow(
+        name="frontend-design-scan",
+        nodes=nodes,
+        edges=edges,
+        start_node="fork_scan_research",
+        trigger=trigger,
+    )
+
+
 # ── Registry ─────────────────────────────────────────────────────
 
 
@@ -2667,4 +3410,6 @@ def register_all() -> dict[str, Workflow]:
         "spec-generate": spec_generate_workflow(),
         "spec-update": spec_update_workflow(),
         "founder": founder_workflow(),
+        "frontend-design": frontend_design_workflow(),
+        "frontend-design-scan": frontend_design_scan_workflow(),
     }
