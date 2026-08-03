@@ -71,6 +71,7 @@ def build_workflow() -> WorkflowSpec:
                 theta_prior=(
                     "Combine the sub-answers below into a single, concise "
                     "final answer to the original question.\n"
+                    "If the question asks whether/if something is true, answer yes or no.\n"
                     "Sub-answers: {input}\n"
                     "Final answer:\n"
                     "Output ONLY the answer in 1-5 words, no explanation."
