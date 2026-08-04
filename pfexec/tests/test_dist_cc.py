@@ -315,3 +315,160 @@ def test_session_dir_cleanup():
     assert session.root.exists()
     assert "pfexec-session-" in session.root.name
     assert session.root.parent == Path(tempfile.gettempdir())
+
+
+def test_belief_io_hint_cli():
+    workflow = _workflow()
+    config = _config()
+    session = compile(workflow, config, "What is the capital of France?", backend_mode="mock")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pfexec.dist.cc.belief_io",
+         "hint",
+         "--session", str(session.root),
+         "--node", "decompose"],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+
+
+def test_belief_io_hint_prints_hint():
+    """cmd_hint prints a hint when the top particle has a meaningful brief."""
+    from pfexec.dist.cc.belief_io import cmd_hint
+
+    with tempfile.TemporaryDirectory() as tmp:
+        session_dir = Path(tmp)
+        state = ExecutionState(
+            pointer="decompose",
+            belief=Belief(particles=[
+                Particle(brief="chain-of-thought reasoning", weight=0.6),
+                Particle(brief="keyword matching", weight=0.4),
+            ]),
+            trace=TraceTree(root=TraceNode(node_id="root")),
+            user_input="test",
+        )
+        write_state(session_dir / "state.json", state)
+
+        import io
+        import contextlib
+        f = io.StringIO()
+        with contextlib.redirect_stdout(f):
+            cmd_hint(session_dir, "decompose")
+        output = f.getvalue()
+        assert "[pfexec:" in output
+        assert "chain-of-thought reasoning" in output
+        assert "keyword matching" in output
+
+
+def test_belief_io_hint_skips_plan_briefs():
+    """cmd_hint produces no output when top particle has plan-* brief."""
+    from pfexec.dist.cc.belief_io import cmd_hint
+
+    with tempfile.TemporaryDirectory() as tmp:
+        session_dir = Path(tmp)
+        state = ExecutionState(
+            pointer="decompose",
+            belief=Belief(particles=[
+                Particle(brief="plan-0", weight=0.5),
+                Particle(brief="plan-1", weight=0.5),
+            ]),
+            trace=TraceTree(root=TraceNode(node_id="root")),
+            user_input="test",
+        )
+        write_state(session_dir / "state.json", state)
+
+        import io
+        import contextlib
+        f = io.StringIO()
+        with contextlib.redirect_stdout(f):
+            cmd_hint(session_dir, "decompose")
+        assert f.getvalue() == ""
+
+
+def test_agentic_v3_dry_run():
+    from pfexec.dist.cc.runner_agentic import run as run_agentic_v3
+
+    workflow = _workflow()
+    config = _config()
+    result = run_agentic_v3(workflow, "What is X?", config, backend_mode="mock")
+
+    assert result.terminated_by == "complete"
+    assert result.steps_taken == 3
+    assert len(result.all_outputs) == 3
+    for nid in ["decompose", "retrieve", "answer"]:
+        assert nid in result.final_state.node_outputs
+
+
+def test_agentic_v3_generates_hinted_skill():
+    from pfexec.dist.cc.runner_agentic import generate_hinted_skill_md
+
+    workflow = _workflow()
+    state = ExecutionState(
+        pointer="decompose",
+        belief=Belief(particles=[
+            Particle(brief="systematic decomposition", weight=0.5),
+            Particle(brief="keyword search", weight=0.3),
+            Particle(brief="analogy reasoning", weight=0.2),
+        ]),
+        trace=TraceTree(root=TraceNode(node_id="root")),
+        user_input="test",
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        session_dir = Path(tmp)
+        md = generate_hinted_skill_md(workflow, state, session_dir)
+
+        assert "pfexec Workflow" in md
+        assert "pfexec hint:" in md
+        assert "systematic decomposition" in md
+        assert "decompose" in md
+        assert "retrieve" in md
+        assert "answer" in md
+        assert "### Output:" in md
+        assert "node_outputs/" in md
+        assert "### Final Answer" in md
+
+
+def test_agentic_v3_hook_and_settings():
+    from pfexec.dist.cc.runner_agentic import _generate_hint_hook, _generate_settings
+
+    config = _config()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        session_dir = Path(tmp)
+        (session_dir / "hooks").mkdir()
+
+        hook_path = _generate_hint_hook(session_dir, config, "mock")
+        assert hook_path.exists()
+        assert os.access(hook_path, os.X_OK)
+        content = hook_path.read_text()
+        assert "pfexec.dist.cc.belief_io observe" in content
+        assert "pfexec.dist.cc.belief_io fork-check" in content
+        assert "pfexec.dist.cc.belief_io hint" in content
+
+        settings_path = _generate_settings(session_dir, hook_path)
+        assert settings_path.exists()
+        settings = json.loads(settings_path.read_text())
+        assert "hooks" in settings
+        assert "PostToolUse" in settings["hooks"]
+        hooks = settings["hooks"]["PostToolUse"]
+        assert hooks[0]["matcher"] == "Write"
+        assert "write_observer.sh" in hooks[0]["hooks"][0]["command"]
+
+
+def test_agentic_v3_parse_output():
+    from pfexec.dist.cc.runner_agentic import _parse_output
+
+    workflow = _workflow()
+    raw = (
+        "### Output: decompose\nSub-questions here\n"
+        "### Output: retrieve\nRetrieved info\n"
+        "### Output: answer\nParis\n"
+        "### Final Answer\nParis"
+    )
+    node_outputs, final = _parse_output(raw, workflow)
+
+    assert "decompose" in node_outputs
+    assert "retrieve" in node_outputs
+    assert "answer" in node_outputs
+    assert final == "Paris"

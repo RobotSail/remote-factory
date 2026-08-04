@@ -184,6 +184,30 @@ def cmd_observe(session_dir: Path, node_id: str, backend_mode: str) -> None:
     write_state(_state_path(session_dir), state)
 
 
+def cmd_hint(session_dir: Path, node_id: str) -> None:
+    """Print a natural language hint based on current belief state."""
+    state = read_state(_state_path(session_dir))
+    state.belief.normalize()
+
+    particles = sorted(state.belief.particles, key=lambda p: p.weight, reverse=True)
+    top = particles[0]
+
+    if not top.brief or top.brief.startswith("plan-") or top.brief.startswith("rejuv-"):
+        return
+
+    confidence = top.weight * 100
+    hint = f'[pfexec: after {node_id}, strategy "{top.brief}" leads (confidence: {confidence:.0f}%)'
+
+    if len(particles) > 1:
+        runner_up = particles[1]
+        if runner_up.brief and not runner_up.brief.startswith(("plan-", "rejuv-")):
+            if runner_up.weight > top.weight * 0.6:
+                hint += f', also consider "{runner_up.brief}" ({runner_up.weight * 100:.0f}%)'
+
+    hint += "]"
+    print(hint)
+
+
 def cmd_fork_check(session_dir: Path, node_id: str, tau: float, max_forks: int,
                    backend_mode: str) -> None:
     state = read_state(_state_path(session_dir))
@@ -238,6 +262,10 @@ def main() -> None:
     p_fork.add_argument("--max-forks", type=int, default=3)
     p_fork.add_argument("--backend", default="mock", choices=["mock", "claude"])
 
+    p_hint = sub.add_parser("hint")
+    p_hint.add_argument("--session", required=True, type=Path)
+    p_hint.add_argument("--node", required=True)
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -248,6 +276,8 @@ def main() -> None:
         cmd_observe(args.session, args.node, args.backend)
     elif args.command == "fork-check":
         cmd_fork_check(args.session, args.node, args.tau, args.max_forks, args.backend)
+    elif args.command == "hint":
+        cmd_hint(args.session, args.node)
 
 
 if __name__ == "__main__":

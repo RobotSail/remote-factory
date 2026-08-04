@@ -169,6 +169,8 @@ def main():
                             help="Factory SKILL.md single-prompt baseline")
     mode_group.add_argument("--agentic", action="store_true",
                             help="Agentic mode with PostToolUse hooks")
+    mode_group.add_argument("--agentic-v3", action="store_true",
+                            help="Agentic mode with engine-computed hints via hooks")
     parser.add_argument("--observe-mode", type=str, default="full",
                         choices=["full", "sequential", "rewind", "lightweight"],
                         help="Observe mode for belief updates")
@@ -207,6 +209,16 @@ def main():
 
         runner = agentic_runner
         mode = "agentic"
+    elif args.agentic_v3:
+        from pfexec.dist.cc.runner_agentic import run as run_agentic_v3
+        backend = ClaudeBackend()
+        config = EngineConfig(n_particles=5, tau=0.3, max_steps=50)
+
+        def agentic_v3_runner(workflow, user_input, config):
+            return run_agentic_v3(workflow, user_input, config, backend_mode="claude")
+
+        runner = agentic_v3_runner
+        mode = "agentic-v3"
     else:
         backend = ClaudeBackend()
         config = EngineConfig(n_particles=5, tau=0.3, max_steps=50, observe_mode=args.observe_mode)
