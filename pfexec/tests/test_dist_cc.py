@@ -225,12 +225,12 @@ def test_agentic_skill_gen():
         session_dir = Path(tmp)
         md = generate_agentic(workflow, config, session_dir)
 
-        assert "pfexec Agentic Protocol" in md
+        assert "pfexec Workflow" in md
         assert "decompose" in md
         assert "retrieve" in md
         assert "answer" in md
-        assert "## Protocol" in md
-        assert "## Nodes (execute in this order)" in md
+        assert "## Phase 1:" in md
+        assert "## Completion" in md
         assert str(session_dir) in md
 
 
@@ -242,9 +242,9 @@ def test_agentic_skill_has_protocol():
         session_dir = Path(tmp)
         md = generate_agentic(workflow, config, session_dir)
 
-        assert "python3 -m pfexec.dist.cc.belief_io sample" in md
-        assert "fork_status.txt" in md
-        assert "PostToolUse" in md or "hook automatically runs" in md
+        assert "Available Tools (optional)" in md
+        assert "Write your result under" in md
+        assert "run automatically via hooks" in md
         assert "## Completion" in md
 
 
