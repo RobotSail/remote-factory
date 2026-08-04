@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import subprocess
 
 from pfexec.dist.cc.belief_io import _get_backend, read_state, write_state
@@ -53,7 +54,7 @@ def _claude_call(prompt: str, system: str = "",
         cmd.extend(["--system-prompt", system])
     cmd.extend(["-p", prompt])
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     if result.returncode != 0:
         return f"ERROR: {result.stderr}"
     return result.stdout.strip()
@@ -96,7 +97,8 @@ def _run_orchestrated(workflow: WorkflowSpec, user_input: str, config: EngineCon
         state.belief.normalize()
         n_particles = len(state.belief.particles)
         if n_particles > 1:
-            chosen = max(state.belief.particles, key=lambda p: p.weight)
+            weights = [p.weight for p in state.belief.particles]
+            chosen = random.choices(state.belief.particles, weights=weights, k=1)[0]
             uniform = 1.0 / n_particles
             if (chosen.brief and not chosen.brief.startswith("plan-")
                     and chosen.weight > uniform * 1.2):
