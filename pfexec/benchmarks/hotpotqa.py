@@ -165,6 +165,8 @@ def main():
                             help="Full probabilistic engine")
     mode_group.add_argument("--factory-baseline", action="store_true",
                             help="Factory SKILL.md single-prompt baseline")
+    mode_group.add_argument("--agentic", action="store_true",
+                            help="Agentic mode with PostToolUse hooks")
     parser.add_argument("--observe-mode", type=str, default="full",
                         choices=["full", "sequential", "rewind", "lightweight"],
                         help="Observe mode for belief updates")
@@ -191,6 +193,16 @@ def main():
         config = EngineConfig(n_particles=1, tau=0.0, max_steps=30)
         runner = run_factory_baseline
         mode = "factory-baseline"
+    elif args.agentic:
+        from pfexec.dist.cc.runner import _run_agentic
+        backend = ClaudeBackend()
+        config = EngineConfig(n_particles=5, tau=0.3, max_steps=50, observe_mode=args.observe_mode)
+
+        def agentic_runner(workflow, user_input, config):
+            return _run_agentic(workflow, user_input, config, backend_mode="claude")
+
+        runner = agentic_runner
+        mode = "agentic"
     else:
         backend = ClaudeBackend()
         config = EngineConfig(n_particles=5, tau=0.3, max_steps=50, observe_mode=args.observe_mode)

@@ -102,80 +102,83 @@ def generate_agentic(workflow: WorkflowSpec, config: EngineConfig,
     terminal = _terminal_nodes(workflow)
     terminal_id = terminal[0] if terminal else order[-1]
 
-    lines: list[str] = []
-    lines.append(f"# {workflow.name} — pfexec Agentic Protocol")
-    lines.append("")
-    lines.append(
-        "You are executing a pfexec probabilistic workflow. "
-        "Follow this protocol EXACTLY for each node."
-    )
-    lines.append("")
+    lines: list[str] = [
+        "---",
+        f"name: {workflow.name}",
+        f'description: "Execute the {workflow.name} workflow as a multi-phase pipeline."',
+        "---",
+        "",
+        f"# {workflow.name} — pfexec Workflow",
+        "",
+        "You are executing a multi-step reasoning workflow. Follow each phase "
+        "in order. For each phase, use the output of the previous phase as "
+        "context (replacing {input} references).",
+        "",
+        "**Output format:** After completing each phase:",
+        "1. Write your result under a `### Output: <node_id>` header in your response",
+        f"2. Save it to the session directory:",
+        "   ```",
+        f"   Write to: {session_dir}/node_outputs/<node_id>.txt",
+        "   ```",
+        "",
+    ]
 
-    lines.append("## Session Directory")
-    lines.append(f"All paths are relative to: {session_dir}")
-    lines.append("")
-
-    lines.append("## Protocol")
-    lines.append("")
-    lines.append("For EACH node listed below, in order:")
-    lines.append("")
-
-    lines.append("### Before the node")
-    lines.append("Run this command to get the conditioned prompt:")
-    lines.append("```bash")
-    lines.append(
-        f"python3 -m pfexec.dist.cc.belief_io sample "
-        f"--session {session_dir} --node <NODE_ID> --backend {backend_mode}"
-    )
-    lines.append(f"cat {session_dir}/hooks/prompt.txt")
-    lines.append("```")
-    lines.append("Read the output of prompt.txt — this is your task instruction for this node.")
-    lines.append("")
-
-    lines.append("### Execute the node")
-    lines.append(
-        "Perform the task described in prompt.txt. Think carefully and produce your answer."
-    )
-    lines.append("")
-
-    lines.append("### After the node")
-    lines.append("Write your output to the node output file:")
-    lines.append("```bash")
-    lines.append(f"cat > {session_dir}/node_outputs/<NODE_ID>.txt << PFEXEC_OUTPUT")
-    lines.append("<YOUR OUTPUT HERE>")
-    lines.append("PFEXEC_OUTPUT")
-    lines.append("```")
-    lines.append("")
-    lines.append(
-        "Note: A PostToolUse hook automatically runs observe and fork-check after you write."
-    )
-    lines.append("")
-    lines.append("Then check the fork status:")
-    lines.append("```bash")
-    lines.append(f"cat {session_dir}/hooks/fork_status.txt")
-    lines.append("```")
-    lines.append(
-        "- If it says FORK: read state.json to find the rewound pointer, "
-        "then go back to that node and re-execute from there."
-    )
-    lines.append("- If it says CONTINUE: proceed to the next node.")
-    lines.append("")
-
-    lines.append("## Nodes (execute in this order)")
-    lines.append("")
-    for nid in order:
+    for i, nid in enumerate(order, 1):
         node = node_map[nid]
-        lines.append(f"### Node: {nid}")
-        lines.append(f"- Role: {node.spec}")
-        lines.append(f"- Effect: {node.effect}")
+        lines.append(f"## Phase {i}: {nid}")
+        lines.append("")
+        lines.append(f"**Role:** {node.spec}")
+        lines.append("")
+        lines.append("**Task:**")
+        lines.append(node.theta_prior)
+        lines.append("")
+        if i == 1:
+            lines.append(
+                "The `{input}` above will be provided in the user message."
+            )
+        else:
+            prev_nid = order[i - 2]
+            lines.append(
+                f"Use the output from Phase {i - 1} (`{prev_nid}`) as "
+                f"the `{{input}}` for this phase."
+            )
+        lines.append("")
+        lines.append(
+            f"Write your result under `### Output: {nid}` and save to "
+            f"`node_outputs/{nid}.txt`"
+        )
         lines.append("")
 
     lines.append("## Completion")
-    lines.append("After all nodes are done, read the terminal node output:")
-    lines.append("```bash")
-    lines.append(f"cat {session_dir}/node_outputs/{terminal_id}.txt")
-    lines.append("```")
-    lines.append("Report this as your final answer.")
+    lines.append("")
+    lines.append(
+        f"After completing all {len(order)} phases, provide your final "
+        f"consolidated answer under `### Final Answer`."
+    )
+    lines.append("")
+
+    lines.append("## Available Tools (optional)")
+    lines.append("")
+    lines.append(
+        "You may use these to check belief state or trigger replanning:"
+    )
+    lines.append("")
+    lines.append("- **pfexec sample**: Get a strategy hint conditioned on evidence so far")
+    lines.append(f"  `bash hooks/pre_step.sh <node_id>` then read `hooks/hint.txt`")
+    lines.append(
+        "- **pfexec observe**: Manually update belief "
+        "(runs automatically when you save outputs)"
+    )
+    lines.append(
+        "- **pfexec fork-check**: Check if replanning is needed "
+        "(runs automatically when you save outputs)"
+    )
+    lines.append("")
+    lines.append(
+        "These tools run automatically via hooks when you write to "
+        "node_outputs/ — you do not need to call them manually unless "
+        "you want explicit control."
+    )
     lines.append("")
 
     return "\n".join(lines)
