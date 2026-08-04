@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 from pfexec.benchmarks.eval_utils import run_eval
@@ -107,22 +108,34 @@ def run_benchmark(
     backend: LLMBackend,
     config: EngineConfig,
     limit: int | None = None,
+    runner: Callable[[WorkflowSpec, str, EngineConfig], EngineResult] | None = None,
 ) -> dict:
     workflow = build_workflow()
     questions = load_data(limit)
+    total_nodes = len(workflow.nodes)
     results: list[tuple[str, str]] = []
+    completion_rates: list[float] = []
 
     for i, item in enumerate(questions):
         question = item["question"]
         ground_truth = item["answer"]
-        result: EngineResult = run(workflow, question, backend, config)
+        if runner is not None:
+            result: EngineResult = runner(workflow, question, config)
+        else:
+            result = run(workflow, question, backend, config)
         prediction = result.output.split("\n")[-1].strip()
         results.append((prediction, ground_truth))
+        node_rate = result.steps_taken / total_nodes if total_nodes else 0.0
+        completion_rates.append(node_rate)
         print(f"  [{i + 1}/{len(questions)}] Q: {question[:60]}...")
         print(f"           Pred: {prediction[:60]}")
         print(f"           Gold: {ground_truth}")
+        print(f"           Nodes: {result.steps_taken}/{total_nodes} ({node_rate:.0%})")
 
-    return run_eval(results)
+    eval_result = run_eval(results)
+    avg_completion = sum(completion_rates) / len(completion_rates) if completion_rates else 0.0
+    eval_result["avg_node_completion"] = avg_completion
+    return eval_result
 
 
 def print_summary(eval_result: dict, mode: str) -> None:
@@ -131,6 +144,8 @@ def print_summary(eval_result: dict, mode: str) -> None:
     print(f"{'=' * 60}")
     print(f"  Avg F1:          {eval_result['avg_f1']:.4f}")
     print(f"  Avg EM:          {eval_result['avg_em']:.4f}")
+    if "avg_node_completion" in eval_result:
+        print(f"  Node Completion: {eval_result['avg_node_completion']:.1%}")
     print(f"  Questions:       {len(eval_result['per_question'])}")
     print(f"{'=' * 60}")
     for i, q in enumerate(eval_result["per_question"]):
@@ -148,12 +163,16 @@ def main():
                             help="Single-path LLM, no particles/fork")
     mode_group.add_argument("--pfexec", action="store_true",
                             help="Full probabilistic engine")
+    mode_group.add_argument("--factory-baseline", action="store_true",
+                            help="Factory SKILL.md single-prompt baseline")
     parser.add_argument("--observe-mode", type=str, default="full",
                         choices=["full", "sequential", "rewind", "lightweight"],
                         help="Observe mode for belief updates")
     parser.add_argument("--limit", type=int, default=None,
                         help="Run only first N questions")
     args = parser.parse_args()
+
+    runner: Callable[[WorkflowSpec, str, EngineConfig], EngineResult] | None = None
 
     if args.dry_run:
         fixtures = load_fixtures()
@@ -166,13 +185,19 @@ def main():
         backend = ClaudeBackend()
         config = EngineConfig(n_particles=1, tau=0.0, max_steps=30)
         mode = "deterministic"
+    elif args.factory_baseline:
+        from pfexec.dist.cc.factory_baseline import run_factory_baseline
+        backend = ClaudeBackend()
+        config = EngineConfig(n_particles=1, tau=0.0, max_steps=30)
+        runner = run_factory_baseline
+        mode = "factory-baseline"
     else:
         backend = ClaudeBackend()
         config = EngineConfig(n_particles=5, tau=0.3, max_steps=50, observe_mode=args.observe_mode)
         mode = "pfexec" if args.observe_mode == "full" else f"pfexec (observe={args.observe_mode})"
 
     print(f"Running HotpotQA benchmark ({mode})...")
-    eval_result = run_benchmark(backend, config, args.limit)
+    eval_result = run_benchmark(backend, config, args.limit, runner=runner)
     print_summary(eval_result, mode)
 
 
