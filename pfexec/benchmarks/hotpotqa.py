@@ -148,6 +148,9 @@ def main():
                             help="Single-path LLM, no particles/fork")
     mode_group.add_argument("--pfexec", action="store_true",
                             help="Full probabilistic engine")
+    parser.add_argument("--observe-mode", type=str, default="full",
+                        choices=["full", "sequential", "rewind", "lightweight"],
+                        help="Observe mode for belief updates")
     parser.add_argument("--limit", type=int, default=None,
                         help="Run only first N questions")
     args = parser.parse_args()
@@ -165,8 +168,8 @@ def main():
         mode = "deterministic"
     else:
         backend = ClaudeBackend()
-        config = EngineConfig(n_particles=5, tau=0.3, max_steps=50)
-        mode = "pfexec"
+        config = EngineConfig(n_particles=5, tau=0.3, max_steps=50, observe_mode=args.observe_mode)
+        mode = "pfexec" if args.observe_mode == "full" else f"pfexec (observe={args.observe_mode})"
 
     print(f"Running HotpotQA benchmark ({mode})...")
     eval_result = run_benchmark(backend, config, args.limit)
