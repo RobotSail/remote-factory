@@ -32,6 +32,12 @@ def _format_initial_hints(state: ExecutionState) -> dict[str, str]:
         return {}
 
     top = particles[0]
+
+    n = len(particles)
+    uniform = 1.0 / n if n > 0 else 1.0
+    if top.weight < uniform * 1.5:
+        return {}
+
     confidence = top.weight * 100
     hint = f'[pfexec hint: consider strategy "{top.brief}" (confidence: {confidence:.0f}%)'
 
@@ -60,18 +66,25 @@ def generate_hinted_skill_md(workflow: WorkflowSpec, state: ExecutionState) -> s
         "Follow each phase in order. For each phase, use the output of the previous",
         "phase as context.",
         "",
-        "Strategy hints from the pfexec engine appear in [pfexec: ...] brackets.",
-        "These are advisory — use them as context for your reasoning, not as commands.",
-        "",
+    ]
+
+    if default_hint:
+        lines.extend([
+            "Strategy hints from the pfexec engine appear in [pfexec: ...] brackets.",
+            "These are advisory — use them as context for your reasoning, not as commands.",
+            "",
+        ])
+
+    lines.extend([
         "**Output format:** After completing each phase, write your result",
         "under a `### Output: <node_id>` header.",
         "",
-    ]
+    ])
 
     for i, nid in enumerate(order, 1):
         node = node_map[nid]
         lines.append(f"## Phase {i}: {nid}")
-        if default_hint:
+        if i == 1 and default_hint:
             lines.append(default_hint)
         lines.append("")
         lines.append(f"**Role:** {node.spec}")

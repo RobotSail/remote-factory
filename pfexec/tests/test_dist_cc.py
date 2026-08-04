@@ -406,9 +406,9 @@ def test_agentic_v3_generates_hinted_skill():
     state = ExecutionState(
         pointer="decompose",
         belief=Belief(particles=[
-            Particle(brief="systematic decomposition", weight=0.5),
-            Particle(brief="keyword search", weight=0.3),
-            Particle(brief="analogy reasoning", weight=0.2),
+            Particle(brief="systematic decomposition", weight=0.6),
+            Particle(brief="keyword search", weight=0.25),
+            Particle(brief="analogy reasoning", weight=0.15),
         ]),
         trace=TraceTree(root=TraceNode(node_id="root")),
         user_input="test",
@@ -425,6 +425,36 @@ def test_agentic_v3_generates_hinted_skill():
     assert "### Output:" in md
     assert "node_outputs/" not in md
     assert "### Final Answer" in md
+    # Fix 2: hint only at Phase 1
+    assert md.count("pfexec hint:") == 1
+    assert "## Phase 1: decompose\n[pfexec hint:" in md
+    # Fix 3: preamble present when hints exist
+    assert "Strategy hints from the pfexec engine" in md
+
+
+def test_agentic_v3_no_hint_for_uniform_particles():
+    """Uniform particle weights produce no hints and no hint preamble."""
+    from pfexec.dist.cc.runner_agentic import _format_initial_hints, generate_hinted_skill_md
+
+    workflow = _workflow()
+    state = ExecutionState(
+        pointer="decompose",
+        belief=Belief(particles=[
+            Particle(brief="strategy-a", weight=1.0),
+            Particle(brief="strategy-b", weight=1.0),
+            Particle(brief="strategy-c", weight=1.0),
+        ]),
+        trace=TraceTree(root=TraceNode(node_id="root")),
+        user_input="test",
+    )
+
+    assert _format_initial_hints(state) == {}
+
+    md = generate_hinted_skill_md(workflow, state)
+    assert "pfexec hint:" not in md
+    assert "Strategy hints from the pfexec engine" not in md
+    assert "## Phase 1: decompose" in md
+    assert "## Phase 2:" in md
 
 
 def test_agentic_v3_bare_mode_no_hooks():
