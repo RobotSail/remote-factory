@@ -414,46 +414,28 @@ def test_agentic_v3_generates_hinted_skill():
         user_input="test",
     )
 
-    with tempfile.TemporaryDirectory() as tmp:
-        session_dir = Path(tmp)
-        md = generate_hinted_skill_md(workflow, state, session_dir)
+    md = generate_hinted_skill_md(workflow, state)
 
-        assert "pfexec Workflow" in md
-        assert "pfexec hint:" in md
-        assert "systematic decomposition" in md
-        assert "decompose" in md
-        assert "retrieve" in md
-        assert "answer" in md
-        assert "### Output:" in md
-        assert "node_outputs/" in md
-        assert "### Final Answer" in md
+    assert "pfexec Workflow" in md
+    assert "pfexec hint:" in md
+    assert "systematic decomposition" in md
+    assert "decompose" in md
+    assert "retrieve" in md
+    assert "answer" in md
+    assert "### Output:" in md
+    assert "node_outputs/" not in md
+    assert "### Final Answer" in md
 
 
-def test_agentic_v3_hook_and_settings():
-    from pfexec.dist.cc.runner_agentic import _generate_hint_hook, _generate_settings
+def test_agentic_v3_bare_mode_no_hooks():
+    from pfexec.dist.cc.runner_agentic import run as run_agentic_v3
 
+    workflow = _workflow()
     config = _config()
+    result = run_agentic_v3(workflow, "What is X?", config, backend_mode="mock")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        session_dir = Path(tmp)
-        (session_dir / "hooks").mkdir()
-
-        hook_path = _generate_hint_hook(session_dir, config, "mock")
-        assert hook_path.exists()
-        assert os.access(hook_path, os.X_OK)
-        content = hook_path.read_text()
-        assert "pfexec.dist.cc.belief_io observe" in content
-        assert "pfexec.dist.cc.belief_io fork-check" in content
-        assert "pfexec.dist.cc.belief_io hint" in content
-
-        settings_path = _generate_settings(session_dir, hook_path)
-        assert settings_path.exists()
-        settings = json.loads(settings_path.read_text())
-        assert "hooks" in settings
-        assert "PostToolUse" in settings["hooks"]
-        hooks = settings["hooks"]["PostToolUse"]
-        assert hooks[0]["matcher"] == "Write"
-        assert "write_observer.sh" in hooks[0]["hooks"][0]["command"]
+    assert result.terminated_by == "complete"
+    assert result.steps_taken == 3
 
 
 def test_agentic_v3_parse_output():

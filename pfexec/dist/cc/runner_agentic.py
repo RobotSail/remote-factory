@@ -1,16 +1,14 @@
-"""B2 Agentic runner — single Claude session with engine-computed hints.
+"""B2 Agentic runner — single Claude --bare call with engine-computed hints.
 
-The pfexec engine runs alongside Claude, injecting strategy hints
-computed from the particle filter via PostToolUse hooks. Claude reasons
-freely in one session (like the factory baseline) while receiving
-dynamic guidance from the engine.
+The pfexec engine pre-computes strategy hints from the particle filter
+and embeds them in the system prompt. Claude reasons in a single --bare
+call (no tools, pure reasoning) like the factory baseline.
 """
 
 from __future__ import annotations
 
 import json
 import re
-import stat
 import subprocess
 import tempfile
 from dataclasses import asdict
@@ -47,8 +45,7 @@ def _format_initial_hints(state: ExecutionState) -> dict[str, str]:
     return {"default": hint}
 
 
-def generate_hinted_skill_md(workflow: WorkflowSpec, state: ExecutionState,
-                              session_dir: Path) -> str:
+def generate_hinted_skill_md(workflow: WorkflowSpec, state: ExecutionState) -> str:
     """Generate factory-baseline-style SKILL.md with embedded engine hints."""
     node_map = {n.id: n for n in workflow.nodes}
     order = _topo_order(workflow)
@@ -65,11 +62,9 @@ def generate_hinted_skill_md(workflow: WorkflowSpec, state: ExecutionState,
         "",
         "Strategy hints from the pfexec engine appear in [pfexec: ...] brackets.",
         "These are advisory — use them as context for your reasoning, not as commands.",
-        "Updated hints will appear automatically after you complete each phase.",
         "",
-        "**Output format:** After completing each phase:",
-        "1. Write your result under a `### Output: <node_id>` header",
-        f"2. Save it to `{session_dir}/node_outputs/<node_id>.txt`",
+        "**Output format:** After completing each phase, write your result",
+        "under a `### Output: <node_id>` header.",
         "",
     ]
 
@@ -96,8 +91,7 @@ def generate_hinted_skill_md(workflow: WorkflowSpec, state: ExecutionState,
             )
         lines.append("")
         lines.append(
-            f"Write your result under `### Output: {nid}` and save to "
-            f"`node_outputs/{nid}.txt`"
+            f"Write your result under `### Output: {nid}`"
         )
         lines.append("")
 
@@ -110,68 +104,6 @@ def generate_hinted_skill_md(workflow: WorkflowSpec, state: ExecutionState,
     lines.append("")
 
     return "\n".join(lines)
-
-
-def _generate_hint_hook(session_dir: Path, config: EngineConfig,
-                         backend_mode: str) -> Path:
-    """Generate the PostToolUse hook that runs observe + prints hints."""
-    hooks_dir = session_dir / "hooks"
-    hooks_dir.mkdir(exist_ok=True)
-
-    hook_path = hooks_dir / "write_observer.sh"
-    hook_path.write_text(
-        "#!/bin/bash\n"
-        f'SESSION_DIR="{session_dir}"\n'
-        'for f in "$SESSION_DIR/node_outputs/"*.txt; do\n'
-        '    [ -f "$f" ] || continue\n'
-        '    NODE_ID=$(basename "$f" .txt)\n'
-        '    MARKER="$SESSION_DIR/hooks/.observed_${NODE_ID}"\n'
-        '    if [ ! -f "$MARKER" ]; then\n'
-        f"        python3 -m pfexec.dist.cc.belief_io observe"
-        f' --session "$SESSION_DIR" --node "$NODE_ID"'
-        f" --backend {backend_mode} 2>/dev/null\n"
-        f"        python3 -m pfexec.dist.cc.belief_io fork-check"
-        f' --session "$SESSION_DIR" --node "$NODE_ID"'
-        f" --tau {config.tau} --max-forks {config.max_forks}"
-        f" --backend {backend_mode}"
-        f' > "$SESSION_DIR/hooks/fork_status.txt" 2>/dev/null\n'
-        f"        python3 -m pfexec.dist.cc.belief_io hint"
-        f' --session "$SESSION_DIR" --node "$NODE_ID"\n'
-        '        FORK_STATUS=$(cat "$SESSION_DIR/hooks/fork_status.txt")\n'
-        '        if [ "$FORK_STATUS" = "FORK" ]; then\n'
-        '            echo "[pfexec replan: low confidence — revised strategies generated.'
-        ' Consider revisiting earlier reasoning.]"\n'
-        "        fi\n"
-        '        touch "$MARKER"\n'
-        "    fi\n"
-        "done\n"
-    )
-    hook_path.chmod(hook_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-    return hook_path
-
-
-def _generate_settings(session_dir: Path, hook_path: Path) -> Path:
-    """Generate .claude/settings.json with PostToolUse hook."""
-    claude_dir = session_dir / ".claude"
-    claude_dir.mkdir(exist_ok=True)
-    settings = {
-        "hooks": {
-            "PostToolUse": [
-                {
-                    "matcher": "Write",
-                    "hooks": [
-                        {
-                            "type": "command",
-                            "command": f"bash {hook_path}",
-                        }
-                    ],
-                }
-            ]
-        }
-    }
-    settings_path = claude_dir / "settings.json"
-    settings_path.write_text(json.dumps(settings, indent=2))
-    return settings_path
 
 
 def _parse_output(raw_output: str, workflow: WorkflowSpec) -> tuple[dict[str, str], str]:
@@ -205,7 +137,7 @@ def _parse_output(raw_output: str, workflow: WorkflowSpec) -> tuple[dict[str, st
 
 def run(workflow: WorkflowSpec, user_input: str, config: EngineConfig,
         backend_mode: str = "claude") -> EngineResult:
-    """Run a workflow as a single Claude session with engine-computed hints."""
+    """Run a workflow as a single Claude --bare call with engine-computed hints."""
     from pfexec.llm import DeterministicBackend, get_backend
     from pfexec.primitives import init as pfexec_init
 
@@ -213,60 +145,38 @@ def run(workflow: WorkflowSpec, user_input: str, config: EngineConfig,
     state = pfexec_init(workflow, user_input, config.n_particles, backend)
 
     session_dir = Path(tempfile.mkdtemp(prefix="pfexec-agentic-"))
-    (session_dir / "node_outputs").mkdir()
-    (session_dir / "hooks").mkdir()
-
     (session_dir / "workflow.json").write_text(workflow.to_json())
     (session_dir / "config.json").write_text(json.dumps(asdict(config), indent=2))
     write_state(session_dir / "state.json", state)
 
-    skill_md = generate_hinted_skill_md(workflow, state, session_dir)
-    skill_path = session_dir / "SKILL.md"
-    skill_path.write_text(skill_md)
-
-    hook_path = _generate_hint_hook(session_dir, config, backend_mode)
-    settings_path = _generate_settings(session_dir, hook_path)
-
-    if backend_mode == "mock":
-        mock = DeterministicBackend(default="mock output")
-        order = _topo_order(workflow)
-        for nid in order:
-            (session_dir / "node_outputs" / f"{nid}.txt").write_text(
-                mock.call(f"Execute {nid}")
-            )
-        raw_output = ""
-    else:
-        result = subprocess.run(
-            ["claude",
-             "--settings", str(settings_path),
-             "--system-prompt-file", str(skill_path),
-             "--allowedTools", "Write",
-             "--dangerously-skip-permissions",
-             "-p", f"Execute the workflow for: {user_input}"],
-            capture_output=True, text=True,
-            timeout=config.max_steps * 120,
-            cwd=str(session_dir),
-        )
-        raw_output = result.stdout.strip()
+    skill_md = generate_hinted_skill_md(workflow, state)
 
     order = _topo_order(workflow)
     terminal = _terminal_nodes(workflow)
     terminal_id = terminal[0] if terminal else order[-1]
 
-    file_outputs: dict[str, str] = {}
-    all_outputs: list[str] = []
-    for nid in order:
-        out_file = session_dir / "node_outputs" / f"{nid}.txt"
-        if out_file.exists():
-            text = out_file.read_text().strip()
-            if text:
-                file_outputs[nid] = text
-                all_outputs.append(text)
+    if backend_mode == "mock":
+        mock = DeterministicBackend(default="mock output")
+        mock_sections = []
+        for nid in order:
+            mock_sections.append(f"### Output: {nid}\n{mock.call(f'Execute {nid}')}")
+        mock_sections.append("### Final Answer\nmock output")
+        raw_output = "\n".join(mock_sections)
+    else:
+        result = subprocess.run(
+            ["claude", "--bare",
+             "--system-prompt", skill_md,
+             "-p", f"Execute the workflow for: {user_input}"],
+            capture_output=True, text=True,
+            timeout=600,
+        )
+        raw_output = result.stdout.strip()
 
     parsed_outputs, parsed_final = _parse_output(raw_output, workflow)
 
-    node_outputs = {**parsed_outputs, **file_outputs}
+    node_outputs = parsed_outputs
     steps_taken = len(node_outputs)
+    all_outputs = [node_outputs[nid] for nid in order if nid in node_outputs]
 
     final_answer = parsed_final
     if not final_answer:
