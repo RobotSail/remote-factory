@@ -95,10 +95,11 @@ def load_fixtures() -> dict[str, str]:
         return json.load(f)
 
 
-def load_data(limit: int | None = None) -> list[dict]:
+def load_data(limit: int | None = None, start: int = 0) -> list[dict]:
     data_path = Path(__file__).parent / "data" / "hotpotqa_20.json"
     with open(data_path) as f:
         questions = json.load(f)
+    questions = questions[start:]
     if limit is not None:
         questions = questions[:limit]
     return questions
@@ -109,9 +110,10 @@ def run_benchmark(
     config: EngineConfig,
     limit: int | None = None,
     runner: Callable[[WorkflowSpec, str, EngineConfig], EngineResult] | None = None,
+    start: int = 0,
 ) -> dict:
     workflow = build_workflow()
-    questions = load_data(limit)
+    questions = load_data(limit, start=start)
     total_nodes = len(workflow.nodes)
     results: list[tuple[str, str]] = []
     completion_rates: list[float] = []
@@ -172,6 +174,8 @@ def main():
                         help="Observe mode for belief updates")
     parser.add_argument("--limit", type=int, default=None,
                         help="Run only first N questions")
+    parser.add_argument("--start", type=int, default=0,
+                        help="Skip first N questions")
     args = parser.parse_args()
 
     runner: Callable[[WorkflowSpec, str, EngineConfig], EngineResult] | None = None
@@ -209,7 +213,7 @@ def main():
         mode = "pfexec" if args.observe_mode == "full" else f"pfexec (observe={args.observe_mode})"
 
     print(f"Running HotpotQA benchmark ({mode})...")
-    eval_result = run_benchmark(backend, config, args.limit, runner=runner)
+    eval_result = run_benchmark(backend, config, args.limit, runner=runner, start=args.start)
     print_summary(eval_result, mode)
 
 
