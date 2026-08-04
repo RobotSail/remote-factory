@@ -25,6 +25,7 @@ class PfExecState(TypedDict):
     budget: int
     user_input: str
     node_outputs: dict[str, str]
+    evidence_seq: list[dict]
 
 
 def _belief_to_dict(belief: Belief) -> dict:
@@ -76,6 +77,7 @@ def _state_to_pfexec(s: PfExecState, budget: int = 50) -> ExecutionState:
         budget_remaining=s.get("budget", budget),
         user_input=s.get("user_input", ""),
         node_outputs=dict(s.get("node_outputs", {})),
+        evidence_seq=list(s.get("evidence_seq", [])),
     )
 
 
@@ -90,6 +92,7 @@ def _pfexec_to_state(es: ExecutionState, outputs: list[str], fork_count: int) ->
         budget=es.budget_remaining,
         user_input=es.user_input,
         node_outputs=dict(es.node_outputs),
+        evidence_seq=list(es.evidence_seq),
     )
 
 

@@ -7,7 +7,7 @@ from typing import Literal
 
 from pfexec.ir import WorkflowSpec
 from pfexec.llm import LLMBackend
-from pfexec.primitives import fork, init, observe, sample
+from pfexec.primitives import fork, init, observe, observe_lightweight, observe_rewind, observe_sequential, sample
 from pfexec.state import Belief, ExecutionState
 
 
@@ -18,6 +18,7 @@ class EngineConfig:
     max_steps: int = 50
     max_forks: int = 3
     rewind_steps: int = 2
+    observe_mode: str = "full"
 
 
 @dataclass(slots=True)
@@ -54,7 +55,14 @@ def run(
         node = node_map[current]
         state, output = sample(state, node, backend)
         outputs.append(output)
-        state = observe(state, output, backend)
+        if cfg.observe_mode == "sequential":
+            state = observe_sequential(state, output, node.id)
+        elif cfg.observe_mode == "rewind":
+            state = observe_rewind(state, output, backend)
+        elif cfg.observe_mode == "lightweight":
+            state = observe_lightweight(state, output)
+        else:
+            state = observe(state, output, backend)
 
         score = _suffix_score(state.belief)
         if node.effect == "effectful" and score < cfg.tau and forks_triggered < cfg.max_forks:

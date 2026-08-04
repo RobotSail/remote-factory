@@ -86,14 +86,19 @@ def sample(
 
     prompt = node.theta_prior.replace("{input}", data_input)
 
+    if state.evidence_seq:
+        entries = [f"[{e['node']}] {e['output'][:150]}" for e in state.evidence_seq[-5:] if e["output"]]
+        if entries:
+            evidence_str = "\n".join(entries)
+            prompt = f"Evidence from prior steps:\n{evidence_str}\n\n{prompt}"
+
     # Only inject strategy hint when there is genuine posterior diversity
     n = len(state.belief.particles)
     uniform_weight = 1.0 / n if n > 0 else 1.0
     should_hint = (
-        n > 1
-        and chosen.brief
+        chosen.brief
         and not chosen.brief.startswith("plan-")
-        and chosen.weight > uniform_weight * 1.2
+        and (n == 1 or chosen.weight > uniform_weight * 1.2)
     )
     if should_hint:
         prompt = f"[Strategy hint: {chosen.brief}]\n\n{prompt}"
@@ -174,6 +179,41 @@ def observe(
     return state
 
 
+def observe_sequential(state: ExecutionState, observation: str, node_id: str) -> ExecutionState:
+    state.evidence_seq.append({
+        "node": node_id,
+        "output": observation[:500],
+        "status": "ok",
+        "lesson": "",
+    })
+    return state
+
+
+def observe_rewind(state: ExecutionState, observation: str, backend: LLMBackend) -> ExecutionState:
+    if not state.belief.particles:
+        return state
+    p = state.belief.particles[0]
+    if p.brief:
+        prompt = (
+            f"Update this running understanding with new evidence. "
+            f"Be concise (1-2 sentences).\n"
+            f"Current understanding: {p.brief}\n"
+            f"New evidence: {observation[:300]}\n"
+            f"Updated understanding:"
+        )
+        p.brief = backend.call(prompt)
+    else:
+        p.brief = observation[:200]
+    p.evidence += f" | {observation[:200]}"
+    return state
+
+
+def observe_lightweight(state: ExecutionState, observation: str) -> ExecutionState:
+    for p in state.belief.particles:
+        p.evidence += f" | {observation[:200]}"
+    return state
+
+
 def fork(
     state: ExecutionState,
     k: int,
@@ -220,6 +260,17 @@ def fork(
     new_particles = [Particle(brief=b, weight=1.0 / n) for b in briefs]
     state.belief.particles = new_particles
     state.pointer = rewind_target
+
+    if state.evidence_seq:
+        keep = max(0, len(state.evidence_seq) - k)
+        state.evidence_seq = state.evidence_seq[:keep]
+        state.evidence_seq.append({
+            "node": "fork",
+            "output": "",
+            "status": "failed",
+            "lesson": lesson,
+        })
+
     return state
 
 

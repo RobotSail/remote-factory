@@ -120,3 +120,4 @@ class ExecutionState:
     budget_remaining: int = 50
     user_input: str = ""
     node_outputs: dict[str, str] = field(default_factory=dict)
+    evidence_seq: list[dict] = field(default_factory=list)

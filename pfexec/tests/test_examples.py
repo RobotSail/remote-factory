@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from pfexec.engine import EngineConfig, EngineResult
+from pfexec.engine import EngineConfig, EngineResult, run
 from pfexec.examples.multi_step_qa import build_workflow as build_qa, load_fixtures as qa_fixtures
 from pfexec.examples.code_fix import build_workflow as build_fix, load_fixtures as fix_fixtures
 from pfexec.examples.schema_mismatch import (
@@ -92,3 +92,84 @@ def test_fixtures_are_valid_json():
             data = json.load(fh)
         assert isinstance(data, dict)
         assert "Generate" in data
+
+
+def _run_example_engine(build_workflow, fixtures: dict[str, str], config: EngineConfig) -> EngineResult:
+    backend = DeterministicBackend(responses=fixtures, default=fixtures.get("default", "ok"))
+    workflow = build_workflow()
+    return run(workflow, "test input", backend, config)
+
+
+def test_sequential_mode_qa():
+    fixtures = qa_fixtures()
+    config = EngineConfig(n_particles=1, tau=0.0, max_steps=20, observe_mode="sequential")
+    result = _run_example_engine(build_qa, fixtures, config)
+    assert isinstance(result, EngineResult)
+    assert result.terminated_by == "complete"
+    assert result.output
+
+
+def test_rewind_mode_qa():
+    fixtures = qa_fixtures()
+    config = EngineConfig(n_particles=1, tau=0.0, max_steps=20, observe_mode="rewind")
+    result = _run_example_engine(build_qa, fixtures, config)
+    assert isinstance(result, EngineResult)
+    assert result.terminated_by == "complete"
+    assert result.output
+
+
+def test_lightweight_mode_qa():
+    fixtures = qa_fixtures()
+    config = EngineConfig(n_particles=3, tau=0.0, max_steps=20, observe_mode="lightweight")
+    result = _run_example_engine(build_qa, fixtures, config)
+    assert isinstance(result, EngineResult)
+    assert result.terminated_by == "complete"
+    assert result.output
+
+
+def test_sequential_mode_code_fix():
+    fixtures = fix_fixtures()
+    config = EngineConfig(n_particles=1, tau=0.0, max_steps=30, observe_mode="sequential")
+    result = _run_example_engine(build_fix, fixtures, config)
+    assert isinstance(result, EngineResult)
+    assert result.output
+
+
+def test_rewind_mode_code_fix():
+    fixtures = fix_fixtures()
+    config = EngineConfig(n_particles=1, tau=0.0, max_steps=30, observe_mode="rewind")
+    result = _run_example_engine(build_fix, fixtures, config)
+    assert isinstance(result, EngineResult)
+    assert result.output
+
+
+def test_lightweight_mode_code_fix():
+    fixtures = fix_fixtures()
+    config = EngineConfig(n_particles=3, tau=0.0, max_steps=30, observe_mode="lightweight")
+    result = _run_example_engine(build_fix, fixtures, config)
+    assert isinstance(result, EngineResult)
+    assert result.output
+
+
+def test_sequential_mode_schema():
+    fixtures = schema_fixtures()
+    config = EngineConfig(n_particles=1, tau=0.0, max_steps=30, observe_mode="sequential")
+    result = _run_example_engine(build_schema, fixtures, config)
+    assert isinstance(result, EngineResult)
+    assert result.output
+
+
+def test_rewind_mode_schema():
+    fixtures = schema_fixtures()
+    config = EngineConfig(n_particles=1, tau=0.0, max_steps=30, observe_mode="rewind")
+    result = _run_example_engine(build_schema, fixtures, config)
+    assert isinstance(result, EngineResult)
+    assert result.output
+
+
+def test_lightweight_mode_schema():
+    fixtures = schema_fixtures()
+    config = EngineConfig(n_particles=3, tau=0.0, max_steps=30, observe_mode="lightweight")
+    result = _run_example_engine(build_schema, fixtures, config)
+    assert isinstance(result, EngineResult)
+    assert result.output

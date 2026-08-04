@@ -3,9 +3,19 @@
 import json
 import random
 
+from pfexec.engine import EngineConfig, run
 from pfexec.ir import EdgeSpec, NodeSpec, WorkflowSpec
 from pfexec.llm import DeterministicBackend
-from pfexec.primitives import _extract_json, fork, init, observe, sample
+from pfexec.primitives import (
+    _extract_json,
+    fork,
+    init,
+    observe,
+    observe_lightweight,
+    observe_rewind,
+    observe_sequential,
+    sample,
+)
 
 
 def _make_workflow() -> WorkflowSpec:
@@ -243,3 +253,127 @@ def test_fork_handles_markdown_fenced_json():
     new_state = fork(state, k=1, backend=backend)
     assert len(new_state.belief.particles) == 2
     assert new_state.belief.particles[0].brief == "new-1"
+
+
+# --- Tests for new observe modes ---
+
+
+def test_observe_sequential_appends_evidence():
+    wf = _make_workflow()
+    backend = DeterministicBackend(default="ok")
+    state = init(wf, "test", n_particles=1, backend=backend)
+    state = observe_sequential(state, "some output", "node_a")
+    assert len(state.evidence_seq) == 1
+    assert state.evidence_seq[0]["node"] == "node_a"
+    assert state.evidence_seq[0]["output"] == "some output"
+    assert state.evidence_seq[0]["status"] == "ok"
+
+
+def test_observe_sequential_multiple():
+    wf = _make_workflow()
+    backend = DeterministicBackend(default="ok")
+    state = init(wf, "test", n_particles=1, backend=backend)
+    state = observe_sequential(state, "out1", "a")
+    state = observe_sequential(state, "out2", "b")
+    state = observe_sequential(state, "out3", "c")
+    assert len(state.evidence_seq) == 3
+    assert [e["node"] for e in state.evidence_seq] == ["a", "b", "c"]
+
+
+def test_observe_rewind_updates_brief():
+    wf = _make_workflow()
+    backend = DeterministicBackend(default="updated understanding")
+    state = init(wf, "test", n_particles=1, backend=backend)
+    state.belief.particles[0].brief = "initial brief"
+    state = observe_rewind(state, "new evidence here", backend)
+    assert state.belief.particles[0].brief == "updated understanding"
+    assert "new evidence here" in state.belief.particles[0].evidence
+
+
+def test_observe_rewind_empty_brief():
+    wf = _make_workflow()
+    backend = DeterministicBackend(default="ok")
+    state = init(wf, "test", n_particles=1, backend=backend)
+    state.belief.particles[0].brief = ""
+    state = observe_rewind(state, "first observation here", backend)
+    assert state.belief.particles[0].brief == "first observation here"[:200]
+
+
+def test_observe_lightweight_accumulates():
+    wf = _make_workflow()
+    backend = DeterministicBackend(
+        responses={"Generate": json.dumps(["p1", "p2", "p3"])},
+        default="ok",
+    )
+    state = init(wf, "test", n_particles=3, backend=backend)
+    state = observe_lightweight(state, "observation X")
+    for p in state.belief.particles:
+        assert "observation X" in p.evidence
+
+
+def test_observe_lightweight_weights_unchanged():
+    wf = _make_workflow()
+    backend = DeterministicBackend(
+        responses={"Generate": json.dumps(["p1", "p2", "p3"])},
+        default="ok",
+    )
+    state = init(wf, "test", n_particles=3, backend=backend)
+    initial_weights = [p.weight for p in state.belief.particles]
+    state = observe_lightweight(state, "observation")
+    for i, p in enumerate(state.belief.particles):
+        assert p.weight == initial_weights[i]
+
+
+def test_sequential_mode_engine_run():
+    wf = _make_workflow()
+    backend = DeterministicBackend(default="ok")
+    config = EngineConfig(n_particles=1, tau=0.0, max_steps=20, observe_mode="sequential")
+    result = run(wf, "test input", backend, config)
+    assert result.terminated_by == "complete"
+    assert result.steps_taken == 3
+    assert len(result.final_state.evidence_seq) == 3
+
+
+def test_rewind_mode_engine_run():
+    wf = _make_workflow()
+    backend = DeterministicBackend(default="updated brief")
+    config = EngineConfig(n_particles=1, tau=0.0, max_steps=20, observe_mode="rewind")
+    result = run(wf, "test input", backend, config)
+    assert result.terminated_by == "complete"
+    assert result.steps_taken == 3
+
+
+def test_lightweight_mode_engine_run():
+    wf = _make_workflow()
+    backend = DeterministicBackend(
+        responses={"Generate": json.dumps(["p1", "p2", "p3"])},
+        default="ok",
+    )
+    config = EngineConfig(n_particles=3, tau=0.0, max_steps=20, observe_mode="lightweight")
+    result = run(wf, "test input", backend, config)
+    assert result.terminated_by == "complete"
+    assert result.steps_taken == 3
+
+
+def test_evidence_seq_in_sample():
+    wf = _make_workflow()
+    backend = DeterministicBackend(default="sample output")
+    state = init(wf, "test", n_particles=1, backend=backend)
+    state.evidence_seq = [
+        {"node": "prev_a", "output": "evidence one", "status": "ok", "lesson": ""},
+        {"node": "prev_b", "output": "evidence two", "status": "ok", "lesson": ""},
+    ]
+    node = wf.nodes[0]
+
+    class CapturingBackend:
+        def __init__(self):
+            self.last_prompt = ""
+        def call(self, prompt: str, system: str = "") -> str:
+            self.last_prompt = prompt
+            return "output"
+
+    capturing = CapturingBackend()
+    _, output = sample(state, node, capturing, rng=random.Random(42))
+    assert "Evidence from prior steps:" in capturing.last_prompt
+    assert "[prev_a] evidence one" in capturing.last_prompt
+    assert "[prev_b] evidence two" in capturing.last_prompt
