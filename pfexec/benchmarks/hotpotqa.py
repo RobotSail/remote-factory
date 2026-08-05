@@ -173,6 +173,8 @@ def main():
                             help="Agentic mode with engine-computed hints via hooks")
     mode_group.add_argument("--wrapped", action="store_true",
                             help="Wrapped mode: claude --bare with engine in wrapper")
+    mode_group.add_argument("--tool", action="store_true",
+                            help="Tool-based mode: Claude drives loop via pfexec CLI")
     parser.add_argument("--observe-mode", type=str, default="full",
                         choices=["full", "sequential", "rewind", "lightweight", "none"],
                         help="Observe mode for belief updates")
@@ -231,6 +233,16 @@ def main():
 
         runner = wrapped_runner
         mode = "wrapped"
+    elif args.tool:
+        from pfexec.dist.cc.runner_tool import run as run_tool
+        backend = ClaudeBackend()
+        config = EngineConfig(n_particles=5, tau=0.3, max_steps=50, observe_mode=args.observe_mode)
+
+        def tool_runner(workflow, user_input, config):
+            return run_tool(workflow, user_input, config, backend_mode="claude")
+
+        runner = tool_runner
+        mode = "tool"
     else:
         backend = ClaudeBackend()
         config = EngineConfig(n_particles=5, tau=0.3, max_steps=50, observe_mode=args.observe_mode)

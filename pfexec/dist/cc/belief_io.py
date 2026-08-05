@@ -33,7 +33,7 @@ def _trace_node_from_dict(d: dict) -> TraceNode:
 
 
 def state_to_dict(state: ExecutionState) -> dict:
-    return {
+    d: dict = {
         "pointer": state.pointer,
         "step": state.step,
         "budget_remaining": state.budget_remaining,
@@ -47,6 +47,9 @@ def state_to_dict(state: ExecutionState) -> dict:
         },
         "trace": _trace_node_to_dict(state.trace.root),
     }
+    if state.evidence_seq:
+        d["evidence_seq"] = state.evidence_seq
+    return d
 
 
 def state_from_dict(d: dict) -> ExecutionState:
@@ -60,7 +63,7 @@ def state_from_dict(d: dict) -> ExecutionState:
     ]
     belief = Belief(particles=particles)
     trace = TraceTree(root=_trace_node_from_dict(d["trace"]))
-    return ExecutionState(
+    state = ExecutionState(
         pointer=d["pointer"],
         belief=belief,
         trace=trace,
@@ -69,6 +72,9 @@ def state_from_dict(d: dict) -> ExecutionState:
         user_input=d.get("user_input", ""),
         node_outputs=d.get("node_outputs", {}),
     )
+    if "evidence_seq" in d:
+        state.evidence_seq = d["evidence_seq"]
+    return state
 
 
 def write_state(path: Path, state: ExecutionState) -> None:
