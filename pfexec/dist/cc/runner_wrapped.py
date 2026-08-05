@@ -18,7 +18,7 @@ from pfexec.dist.cc.skill_gen import _terminal_nodes, _topo_order
 from pfexec.engine import EngineConfig, EngineResult
 from pfexec.ir import WorkflowSpec
 from pfexec.llm import DeterministicBackend, get_backend
-from pfexec.primitives import fork, init as pfexec_init, observe
+from pfexec.primitives import fork, init as pfexec_init, observe, observe_sequential, observe_rewind, observe_lightweight
 from pfexec.state import Belief, ExecutionState, Particle, TraceNode, TraceTree
 
 
@@ -51,6 +51,32 @@ def _mock_output(order: list[str]) -> str:
     sections = [f"### Output: {nid}\nmock output" for nid in order]
     sections.append("### Final Answer\nmock output")
     return "\n".join(sections)
+
+
+def _extract_lesson(state: ExecutionState, config: EngineConfig, failed_output: str) -> str:
+    if config.observe_mode == 'none':
+        return failed_output[:300] if failed_output else 'Try a different approach.'
+    elif config.observe_mode == 'sequential':
+        if state.evidence_seq:
+            last = state.evidence_seq[-1]
+            return last.get('output', '')[:300] or 'Try a different approach.'
+        return failed_output[:300] if failed_output else 'Try a different approach.'
+    elif config.observe_mode == 'rewind':
+        if state.belief.particles:
+            brief = state.belief.particles[0].brief
+            if brief:
+                return brief
+        return 'Try a different approach.'
+    elif config.observe_mode == 'lightweight':
+        best = max(state.belief.particles, key=lambda p: p.weight) if state.belief.particles else None
+        if best and best.evidence:
+            return best.evidence[-300:]
+        return 'Try a different approach.'
+    else:  # full
+        best = max(state.belief.particles, key=lambda p: p.weight) if state.belief.particles else None
+        if best and best.brief:
+            return best.brief
+        return 'Try a different approach.'
 
 
 def run(workflow: WorkflowSpec, user_input: str, config: EngineConfig,
@@ -92,14 +118,25 @@ def run(workflow: WorkflowSpec, user_input: str, config: EngineConfig,
         output_text = node_outputs[nid]
         state.node_outputs[nid] = output_text
 
-        if config.n_particles > 1:
-            state = observe(state, output_text, backend)
+        if config.observe_mode == 'none':
+            pass
+        elif config.observe_mode == 'sequential':
+            state = observe_sequential(state, output_text, nid)
+        elif config.observe_mode == 'rewind':
+            state = observe_rewind(state, output_text, backend)
+        elif config.observe_mode == 'lightweight':
+            state = observe_lightweight(state, output_text)
+        else:  # 'full' — default
+            if config.n_particles > 1:
+                state = observe(state, output_text, backend)
 
         state.step += 1
         state.budget_remaining -= 1
 
         node = node_map[nid]
-        if (node.effect == "effectful"
+        if config.observe_mode == 'none':
+            pass
+        elif (node.effect == "effectful"
                 and forks_triggered < config.max_forks
                 and _suffix_score(state.belief) < config.tau):
             state = fork(state, config.rewind_steps, backend)
@@ -118,10 +155,9 @@ def run(workflow: WorkflowSpec, user_input: str, config: EngineConfig,
 
         prior_context = "\n\n".join(prior_context_parts)
 
-        best_particle = max(state.belief.particles, key=lambda p: p.weight)
-        lesson = best_particle.brief if best_particle.brief else "Try a different approach."
-
         failed_nid = order[fork_at_phase]
+        failed_output = node_outputs.get(failed_nid, '')
+        lesson = _extract_lesson(state, config, failed_output)
         resume_prompt = (
             f"Execute the workflow for the following input:\n\n{user_input}\n\n"
             f"--- Prior attempt (phases completed so far) ---\n\n"

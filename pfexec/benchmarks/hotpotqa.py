@@ -174,7 +174,7 @@ def main():
     mode_group.add_argument("--wrapped", action="store_true",
                             help="Wrapped mode: claude --bare with engine in wrapper")
     parser.add_argument("--observe-mode", type=str, default="full",
-                        choices=["full", "sequential", "rewind", "lightweight"],
+                        choices=["full", "sequential", "rewind", "lightweight", "none"],
                         help="Observe mode for belief updates")
     parser.add_argument("--limit", type=int, default=None,
                         help="Run only first N questions")
@@ -224,7 +224,7 @@ def main():
     elif args.wrapped:
         from pfexec.dist.cc.runner_wrapped import run as run_wrapped
         backend = ClaudeBackend()
-        config = EngineConfig(n_particles=5, tau=0.3, max_steps=50)
+        config = EngineConfig(n_particles=5, tau=0.3, max_steps=50, observe_mode=args.observe_mode)
 
         def wrapped_runner(workflow, user_input, config):
             return run_wrapped(workflow, user_input, config, backend_mode="claude")

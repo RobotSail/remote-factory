@@ -506,6 +506,100 @@ def test_wrapped_parse_and_observe():
     assert len(result.all_outputs) == 3
 
 
+def test_wrapped_observe_none():
+    from pfexec.dist.cc.runner_wrapped import run as run_wrapped
+
+    workflow = _workflow()
+    config = _config(observe_mode="none")
+    result = run_wrapped(workflow, "What is X?", config, backend_mode="mock")
+
+    assert result.terminated_by == "complete"
+    assert result.steps_taken > 0
+    # With observe_mode='none', particles stay uniform (no reweighting)
+    particles = result.final_state.belief.particles
+    weights = [p.weight for p in particles]
+    assert all(abs(w - weights[0]) < 1e-9 for w in weights)
+    # No fork should have triggered
+    assert result.forks_triggered == 0
+
+
+def test_wrapped_observe_sequential():
+    from pfexec.dist.cc.runner_wrapped import run as run_wrapped
+
+    workflow = _workflow()
+    config = _config(observe_mode="sequential")
+    result = run_wrapped(workflow, "What is X?", config, backend_mode="mock")
+
+    assert result.terminated_by == "complete"
+    assert result.steps_taken > 0
+    assert len(result.final_state.evidence_seq) > 0
+    for entry in result.final_state.evidence_seq:
+        assert "node" in entry
+        assert "output" in entry
+
+
+def test_wrapped_observe_lightweight():
+    from pfexec.dist.cc.runner_wrapped import run as run_wrapped
+
+    workflow = _workflow()
+    config = _config(observe_mode="lightweight")
+    result = run_wrapped(workflow, "What is X?", config, backend_mode="mock")
+
+    assert result.terminated_by == "complete"
+    assert result.steps_taken > 0
+    for p in result.final_state.belief.particles:
+        assert len(p.evidence) > 0
+
+
+def test_wrapped_lesson_extraction():
+    from pfexec.dist.cc.runner_wrapped import _extract_lesson
+
+    config_none = _config(observe_mode="none")
+    config_seq = _config(observe_mode="sequential")
+    config_rewind = _config(observe_mode="rewind")
+    config_lw = _config(observe_mode="lightweight")
+    config_full = _config(observe_mode="full")
+
+    state = ExecutionState(
+        pointer="decompose",
+        belief=Belief(particles=[
+            Particle(brief="strategy-A", weight=0.6, evidence="saw X | saw Y"),
+            Particle(brief="strategy-B", weight=0.4, evidence="saw Z"),
+        ]),
+        trace=TraceTree(root=TraceNode(node_id="root")),
+        user_input="test",
+    )
+
+    # none: returns truncated failed_output
+    assert _extract_lesson(state, config_none, "some failure output") == "some failure output"
+    assert _extract_lesson(state, config_none, "") == "Try a different approach."
+
+    # sequential with evidence_seq
+    state.evidence_seq = [{"node": "decompose", "output": "decomposed result"}]
+    assert _extract_lesson(state, config_seq, "") == "decomposed result"
+
+    # sequential without evidence_seq
+    state_empty = ExecutionState(
+        pointer="decompose",
+        belief=Belief(particles=[]),
+        trace=TraceTree(root=TraceNode(node_id="root")),
+        user_input="test",
+    )
+    assert _extract_lesson(state_empty, config_seq, "fallback") == "fallback"
+
+    # rewind: returns first particle's brief
+    assert _extract_lesson(state, config_rewind, "") == "strategy-A"
+
+    # lightweight: returns best particle's evidence tail
+    assert _extract_lesson(state, config_lw, "").endswith("saw Y")
+
+    # full: returns best particle's brief
+    assert _extract_lesson(state, config_full, "") == "strategy-A"
+
+    # full with no particles
+    assert _extract_lesson(state_empty, config_full, "") == "Try a different approach."
+
+
 def test_agentic_v3_parse_output():
     from pfexec.dist.cc.runner_agentic import _parse_output
 
