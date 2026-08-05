@@ -214,6 +214,22 @@ WORKFLOW_META: dict[str, dict[str, str | list[str]]] = {
         ),
         "argument_hint": "<project_path>",
     },
+    "evolve": {
+        "description": (
+            "Evolve mode — iterative code evolution via external MCP evaluation. "
+            "Optimizes a single scalar metric by mutating code within EVOLVE-BLOCK "
+            "boundaries and evaluating via an MCP server. Use when the project has "
+            "an MCP evaluator configured and the user says 'evolve', 'optimize', "
+            "or wants evolutionary code search on a benchmark."
+        ),
+        "argument_hint": "<project_path> --mode evolve",
+        "preamble": (
+            "**MCP Evaluation Mode:** This workflow evaluates code via an external MCP server, "
+            "NOT via local tests/lint/types. The CEO must have access to the MCP tools "
+            "`get_benchmark_info()` and `evaluate_solution()`. All code modifications "
+            "MUST stay within EVOLVE-BLOCK-START/END markers."
+        ),
+    },
 }
 
 
