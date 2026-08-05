@@ -1,0 +1,113 @@
+[
+  {
+    "id": "deprecated_java_image",
+    "name": "Deprecated Java base image",
+    "description": "openjdk images are deprecated, should use eclipse-temurin",
+    "fix": "Use eclipse-temurin:17-jre instead of openjdk:17-slim",
+    "files": {
+      "pom.xml": "<project><groupId>com.example</groupId><artifactId>app</artifactId><version>1.0</version><properties><maven.compiler.source>17</maven.compiler.source></properties></project>",
+      "src/main/java/App.java": "public class App { public static void main(String[] args) { System.out.println(\"Hello\"); }}"
+    },
+    "check_script": "#!/bin/bash\nMODE=$1\nSCRIPT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\nDOCKERFILE=\"$SCRIPT_DIR/Dockerfile\"\n\nif [ ! -f \"$DOCKERFILE\" ]; then\n    echo \"FAIL: No Dockerfile found at $DOCKERFILE\"\n    exit 1\nfi\n\nDF_CONTENT=$(cat \"$DOCKERFILE\")\n\ncase $MODE in\n    build)\n        if echo \"$DF_CONTENT\" | grep -qi 'openjdk'; then\n            echo \"FAIL: manifest for openjdk:17-slim not found. openjdk images are deprecated since 2023. Use eclipse-temurin:17-jre or amazoncorretto:17.\"\n            exit 1\n        fi\n        if echo \"$DF_CONTENT\" | grep -qiE 'eclipse-temurin|amazoncorretto|bellsoft/liberica'; then\n            echo \"PASS: Build successful\"\n        else\n            echo \"FAIL: No recognized Java base image found. Use eclipse-temurin:17-jre or amazoncorretto:17.\"\n            exit 1\n        fi\n        ;;\n    verify)\n        echo \"PASS: Verification passed\"\n        ;;\n    *)\n        echo \"Usage: check.sh build|verify\"\n        exit 1\n        ;;\nesac"
+  },
+  {
+    "id": "python_numpy_compat",
+    "name": "Python/NumPy version incompatibility",
+    "description": "numpy 1.24 requires Python <3.12",
+    "fix": "Use python:3.11-slim or upgrade numpy to >=1.26",
+    "files": {
+      "requirements.txt": "numpy==1.24.0\nflask==3.0.0",
+      "app.py": "import numpy; from flask import Flask; app = Flask(__name__)"
+    },
+    "check_script": "#!/bin/bash\nMODE=$1\nSCRIPT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\nDOCKERFILE=\"$SCRIPT_DIR/Dockerfile\"\n\nif [ ! -f \"$DOCKERFILE\" ]; then\n    echo \"FAIL: No Dockerfile found at $DOCKERFILE\"\n    exit 1\nfi\n\nDF_CONTENT=$(cat \"$DOCKERFILE\")\n\ncase $MODE in\n    build)\n        if echo \"$DF_CONTENT\" | grep -qE 'python:3\\.1[2-9]|python:3\\.2'; then\n            REQS=\"$SCRIPT_DIR/requirements.txt\"\n            if [ -f \"$REQS\" ] && grep -q 'numpy==1\\.24' \"$REQS\"; then\n                echo \"FAIL: numpy 1.24.0 requires Python <3.12. pip install fails with: ERROR: Package numpy 1.24.0 requires Python >=3.8,<3.12\"\n                exit 1\n            fi\n        fi\n        echo \"PASS: Build successful\"\n        ;;\n    verify)\n        echo \"PASS: Verification passed\"\n        ;;\n    *)\n        echo \"Usage: check.sh build|verify\"\n        exit 1\n        ;;\nesac"
+  },
+  {
+    "id": "missing_libpq",
+    "name": "Missing libpq-dev for psycopg2",
+    "description": "psycopg2 needs libpq-dev system package to build",
+    "fix": "Add RUN apt-get update && apt-get install -y libpq-dev",
+    "files": {
+      "requirements.txt": "psycopg2==2.9.9\nflask==3.0.0",
+      "app.py": "import psycopg2; from flask import Flask; app = Flask(__name__); app.run(host='0.0.0.0', port=5000)"
+    },
+    "check_script": "#!/bin/bash\nMODE=$1\nSCRIPT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\nDOCKERFILE=\"$SCRIPT_DIR/Dockerfile\"\n\nif [ ! -f \"$DOCKERFILE\" ]; then\n    echo \"FAIL: No Dockerfile found at $DOCKERFILE\"\n    exit 1\nfi\n\nDF_CONTENT=$(cat \"$DOCKERFILE\")\n\ncase $MODE in\n    build)\n        if echo \"$DF_CONTENT\" | grep -qi 'libpq-dev\\|postgresql-dev'; then\n            echo \"PASS: Build successful\"\n        else\n            echo \"FAIL: Error: pg_config executable not found. pip install psycopg2 requires libpq-dev. Add: RUN apt-get update && apt-get install -y libpq-dev\"\n            exit 1\n        fi\n        ;;\n    verify)\n        echo \"PASS: Verification passed\"\n        ;;\n    *)\n        echo \"Usage: check.sh build|verify\"\n        exit 1\n        ;;\nesac"
+  },
+  {
+    "id": "wrong_port",
+    "name": "Wrong EXPOSE port",
+    "description": "App listens on 8080 but Dockerfile may expose different port",
+    "fix": "Set EXPOSE 8080 to match server.listen(8080)",
+    "files": {
+      "package.json": "{\"name\": \"app\", \"main\": \"server.js\", \"scripts\": {\"start\": \"node server.js\"}}",
+      "server.js": "const http = require('http'); const server = http.createServer((req, res) => res.end('ok')); server.listen(8080, () => console.log('Listening on 8080'));"
+    },
+    "check_script": "#!/bin/bash\nMODE=$1\nSCRIPT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\nDOCKERFILE=\"$SCRIPT_DIR/Dockerfile\"\n\nif [ ! -f \"$DOCKERFILE\" ]; then\n    echo \"FAIL: No Dockerfile found at $DOCKERFILE\"\n    exit 1\nfi\n\nDF_CONTENT=$(cat \"$DOCKERFILE\")\n\ncase $MODE in\n    build)\n        echo \"PASS: Build successful\"\n        ;;\n    verify)\n        if echo \"$DF_CONTENT\" | grep -qE 'EXPOSE\\s+8080'; then\n            echo \"PASS: Verification passed\"\n        else\n            echo \"FAIL: Health check failed. Container EXPOSE port does not match app port 8080. App listens on 8080 but Dockerfile exposes a different port.\"\n            exit 1\n        fi\n        ;;\n    *)\n        echo \"Usage: check.sh build|verify\"\n        exit 1\n        ;;\nesac"
+  },
+  {
+    "id": "stale_lockfile",
+    "name": "Stale lockfile with dead registry",
+    "description": "package-lock.json references a dead registry URL",
+    "fix": "Use npm install instead of npm ci, or delete lockfile first",
+    "files": {
+      "package.json": "{\"name\": \"app\", \"main\": \"index.js\", \"dependencies\": {\"express\": \"^4.18.0\"}}",
+      "package-lock.json": "{\"lockfileVersion\": 2, \"requires\": true, \"packages\": {}, \"dependencies\": {\"express\": {\"version\": \"4.18.2\", \"resolved\": \"https://old-registry.example.com/express/-/express-4.18.2.tgz\"}}}",
+      "index.js": "const express = require('express'); const app = express(); app.get('/', (req, res) => res.send('ok')); app.listen(3000);"
+    },
+    "check_script": "#!/bin/bash\nMODE=$1\nSCRIPT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\nDOCKERFILE=\"$SCRIPT_DIR/Dockerfile\"\n\nif [ ! -f \"$DOCKERFILE\" ]; then\n    echo \"FAIL: No Dockerfile found at $DOCKERFILE\"\n    exit 1\nfi\n\nDF_CONTENT=$(cat \"$DOCKERFILE\")\n\ncase $MODE in\n    build)\n        if echo \"$DF_CONTENT\" | grep -q 'npm ci'; then\n            echo \"FAIL: npm ERR! 404 Not Found - GET https://old-registry.example.com/express/-/express-4.18.2.tgz. Lockfile references a dead registry. Use 'npm install' instead of 'npm ci', or delete the lockfile first.\"\n            exit 1\n        fi\n        if echo \"$DF_CONTENT\" | grep -qi 'npm install\\|npm i '; then\n            echo \"PASS: Build successful\"\n        else\n            echo \"FAIL: No npm install step found in Dockerfile.\"\n            exit 1\n        fi\n        ;;\n    verify)\n        echo \"PASS: Verification passed\"\n        ;;\n    *)\n        echo \"Usage: check.sh build|verify\"\n        exit 1\n        ;;\nesac"
+  },
+  {
+    "id": "no_multistage_go",
+    "name": "Missing multi-stage build for Go",
+    "description": "Go binary should use multi-stage build to avoid shipping toolchain",
+    "fix": "Use multi-stage build: build in golang image, copy binary to scratch/distroless",
+    "files": {
+      "go.mod": "module example.com/app\ngo 1.21",
+      "main.go": "package main\nimport \"fmt\"\nfunc main() { fmt.Println(\"Hello\") }"
+    },
+    "check_script": "#!/bin/bash\nMODE=$1\nSCRIPT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\nDOCKERFILE=\"$SCRIPT_DIR/Dockerfile\"\n\nif [ ! -f \"$DOCKERFILE\" ]; then\n    echo \"FAIL: No Dockerfile found at $DOCKERFILE\"\n    exit 1\nfi\n\nDF_CONTENT=$(cat \"$DOCKERFILE\")\n\ncase $MODE in\n    build)\n        if echo \"$DF_CONTENT\" | grep -qi 'AS builder\\|AS build'; then\n            echo \"PASS: Build successful\"\n        else\n            echo \"FAIL: Image size 1.2GB exceeds 100MB limit. Go toolchain included in final image. Use multi-stage build: build in golang image, copy binary to scratch or distroless.\"\n            exit 1\n        fi\n        ;;\n    verify)\n        echo \"PASS: Verification passed\"\n        ;;\n    *)\n        echo \"Usage: check.sh build|verify\"\n        exit 1\n        ;;\nesac"
+  },
+  {
+    "id": "missing_gunicorn",
+    "name": "Using Flask dev server in production",
+    "description": "Flask app uses development server instead of gunicorn",
+    "fix": "Use gunicorn as production WSGI server in CMD",
+    "files": {
+      "requirements.txt": "flask==3.0.0",
+      "app.py": "from flask import Flask\napp = Flask(__name__)\n@app.route('/')\ndef index():\n    return 'ok'"
+    },
+    "check_script": "#!/bin/bash\nMODE=$1\nSCRIPT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\nDOCKERFILE=\"$SCRIPT_DIR/Dockerfile\"\n\nif [ ! -f \"$DOCKERFILE\" ]; then\n    echo \"FAIL: No Dockerfile found at $DOCKERFILE\"\n    exit 1\nfi\n\nDF_CONTENT=$(cat \"$DOCKERFILE\")\n\ncase $MODE in\n    build)\n        if echo \"$DF_CONTENT\" | grep -qiE 'pip install|requirements\\.txt'; then\n            echo \"PASS: Build successful\"\n        else\n            echo \"FAIL: No pip install step found. Dependencies not installed.\"\n            exit 1\n        fi\n        ;;\n    verify)\n        if echo \"$DF_CONTENT\" | grep -qi 'gunicorn'; then\n            echo \"PASS: Verification passed\"\n        else\n            echo \"FAIL: Development server detected in CMD. Use a production WSGI server: CMD [\\\"gunicorn\\\", \\\"--bind\\\", \\\"0.0.0.0:5000\\\", \\\"app:app\\\"]\"\n            exit 1\n        fi\n        ;;\n    *)\n        echo \"Usage: check.sh build|verify\"\n        exit 1\n        ;;\nesac"
+  },
+  {
+    "id": "missing_env_var",
+    "name": "Missing required DATABASE_URL env var",
+    "description": "App requires DATABASE_URL but Dockerfile doesn't set a default",
+    "fix": "Add ENV DATABASE_URL with a default value",
+    "files": {
+      "requirements.txt": "flask==3.0.0\nsqlalchemy==2.0.0",
+      "app.py": "import os\nfrom flask import Flask\napp = Flask(__name__)\ndb_url = os.environ['DATABASE_URL']\napp.run(host='0.0.0.0', port=5000)"
+    },
+    "check_script": "#!/bin/bash\nMODE=$1\nSCRIPT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\nDOCKERFILE=\"$SCRIPT_DIR/Dockerfile\"\n\nif [ ! -f \"$DOCKERFILE\" ]; then\n    echo \"FAIL: No Dockerfile found at $DOCKERFILE\"\n    exit 1\nfi\n\nDF_CONTENT=$(cat \"$DOCKERFILE\")\n\ncase $MODE in\n    build)\n        echo \"PASS: Build successful\"\n        ;;\n    verify)\n        if echo \"$DF_CONTENT\" | grep -qi 'DATABASE_URL'; then\n            echo \"PASS: Verification passed\"\n        else\n            echo \"FAIL: Container crashed on startup. KeyError: 'DATABASE_URL'. Add ENV DATABASE_URL with a default value.\"\n            exit 1\n        fi\n        ;;\n    *)\n        echo \"Usage: check.sh build|verify\"\n        exit 1\n        ;;\nesac"
+  },
+  {
+    "id": "wrong_node_version",
+    "name": "Node.js version too old for engines field",
+    "description": "package.json requires node >=18 but Dockerfile may use older version",
+    "fix": "Use node:18 or newer to match engines requirement",
+    "files": {
+      "package.json": "{\"name\": \"app\", \"engines\": {\"node\": \">=18\"}, \"main\": \"index.js\", \"scripts\": {\"start\": \"node index.js\"}}",
+      "index.js": "const http = require('http'); http.createServer((req, res) => res.end('ok')).listen(3000);"
+    },
+    "check_script": "#!/bin/bash\nMODE=$1\nSCRIPT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\nDOCKERFILE=\"$SCRIPT_DIR/Dockerfile\"\n\nif [ ! -f \"$DOCKERFILE\" ]; then\n    echo \"FAIL: No Dockerfile found at $DOCKERFILE\"\n    exit 1\nfi\n\nDF_CONTENT=$(cat \"$DOCKERFILE\")\n\ncase $MODE in\n    build)\n        if echo \"$DF_CONTENT\" | grep -qE 'node:1[0-7]|node:14|node:16'; then\n            echo \"FAIL: engine \\\"node\\\" is incompatible with this module. Expected version >=18.0.0 but got 16.20.0\"\n            exit 1\n        fi\n        echo \"PASS: Build successful\"\n        ;;\n    verify)\n        echo \"PASS: Verification passed\"\n        ;;\n    *)\n        echo \"Usage: check.sh build|verify\"\n        exit 1\n        ;;\nesac"
+  },
+  {
+    "id": "missing_pillow_deps",
+    "name": "Missing Pillow system dependencies",
+    "description": "Pillow needs libjpeg-dev and zlib1g-dev to build from source",
+    "fix": "Add apt-get install -y libjpeg-dev zlib1g-dev",
+    "files": {
+      "requirements.txt": "Pillow==10.2.0\nflask==3.0.0",
+      "app.py": "from PIL import Image; from flask import Flask; app = Flask(__name__); app.run(host='0.0.0.0', port=5000)"
+    },
+    "check_script": "#!/bin/bash\nMODE=$1\nSCRIPT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\nDOCKERFILE=\"$SCRIPT_DIR/Dockerfile\"\n\nif [ ! -f \"$DOCKERFILE\" ]; then\n    echo \"FAIL: No Dockerfile found at $DOCKERFILE\"\n    exit 1\nfi\n\nDF_CONTENT=$(cat \"$DOCKERFILE\")\n\ncase $MODE in\n    build)\n        HAS_JPEG=false\n        HAS_ZLIB=false\n        if echo \"$DF_CONTENT\" | grep -qi 'libjpeg'; then\n            HAS_JPEG=true\n        fi\n        if echo \"$DF_CONTENT\" | grep -qi 'zlib'; then\n            HAS_ZLIB=true\n        fi\n        if $HAS_JPEG && $HAS_ZLIB; then\n            echo \"PASS: Build successful\"\n        else\n            echo \"FAIL: The headers or library files could not be found for jpeg. pip install Pillow requires: apt-get install -y libjpeg-dev zlib1g-dev\"\n            exit 1\n        fi\n        ;;\n    verify)\n        echo \"PASS: Verification passed\"\n        ;;\n    *)\n        echo \"Usage: check.sh build|verify\"\n        exit 1\n        ;;\nesac"
+  }
+]
