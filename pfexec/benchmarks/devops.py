@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -115,7 +114,7 @@ def setup_scenario(scenario: dict) -> str:
 
     check_script = Path(project_dir) / "check.sh"
     check_script.write_text(scenario["check_script"])
-    check_script.chmod(0o111)
+    check_script.chmod(0o755)
 
     return project_dir
 
@@ -142,7 +141,6 @@ def run_benchmark(
             build_pass = False
             verify_pass = False
             if dockerfile_path.exists():
-                os.chmod(check_path, 0o755)
                 build_result = subprocess.run(
                     ["bash", str(check_path), "build"],
                     capture_output=True, text=True, cwd=project_dir,
