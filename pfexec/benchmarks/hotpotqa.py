@@ -171,6 +171,8 @@ def main():
                             help="Agentic mode with PostToolUse hooks")
     mode_group.add_argument("--agentic-v3", action="store_true",
                             help="Agentic mode with engine-computed hints via hooks")
+    mode_group.add_argument("--wrapped", action="store_true",
+                            help="Wrapped mode: claude --bare with engine in wrapper")
     parser.add_argument("--observe-mode", type=str, default="full",
                         choices=["full", "sequential", "rewind", "lightweight"],
                         help="Observe mode for belief updates")
@@ -219,6 +221,16 @@ def main():
 
         runner = agentic_v3_runner
         mode = "agentic-v3"
+    elif args.wrapped:
+        from pfexec.dist.cc.runner_wrapped import run as run_wrapped
+        backend = ClaudeBackend()
+        config = EngineConfig(n_particles=5, tau=0.3, max_steps=50)
+
+        def wrapped_runner(workflow, user_input, config):
+            return run_wrapped(workflow, user_input, config, backend_mode="claude")
+
+        runner = wrapped_runner
+        mode = "wrapped"
     else:
         backend = ClaudeBackend()
         config = EngineConfig(n_particles=5, tau=0.3, max_steps=50, observe_mode=args.observe_mode)

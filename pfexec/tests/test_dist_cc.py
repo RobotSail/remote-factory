@@ -468,6 +468,44 @@ def test_agentic_v3_bare_mode_no_hooks():
     assert result.steps_taken == 3
 
 
+def test_wrapped_dry_run():
+    from pfexec.dist.cc.runner_wrapped import run as run_wrapped
+
+    workflow = _workflow()
+    config = _config()
+    result = run_wrapped(workflow, "What is X?", config, backend_mode="mock")
+
+    assert result.terminated_by == "complete"
+    assert result.steps_taken > 0
+    assert isinstance(result.output, str)
+    assert len(result.output) > 0
+
+
+def test_wrapped_uses_factory_baseline_skill():
+    from pfexec.dist.cc.factory_baseline import generate_skill_md
+
+    workflow = _workflow()
+    skill_md = generate_skill_md(workflow)
+
+    assert "pfexec" not in skill_md
+    assert "particle" not in skill_md.lower()
+    assert "belief" not in skill_md.lower()
+    assert "### Output:" in skill_md
+    assert "### Final Answer" in skill_md
+
+
+def test_wrapped_parse_and_observe():
+    from pfexec.dist.cc.runner_wrapped import run as run_wrapped
+
+    workflow = _workflow()
+    config = _config()
+    result = run_wrapped(workflow, "What is X?", config, backend_mode="mock")
+
+    for nid in ["decompose", "retrieve", "answer"]:
+        assert nid in result.final_state.node_outputs
+    assert len(result.all_outputs) == 3
+
+
 def test_agentic_v3_parse_output():
     from pfexec.dist.cc.runner_agentic import _parse_output
 
