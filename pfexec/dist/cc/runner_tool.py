@@ -8,6 +8,7 @@ internals (particles, beliefs) stay hidden behind the tool interface.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -46,22 +47,26 @@ def run(workflow: WorkflowSpec, user_input: str, config: EngineConfig,
     session_dir = result.stdout.strip()
 
     system_prompt = (
-        f"You are solving a problem step by step using the pfexec workflow engine.\n"
-        f"\n"
-        f"Commands:\n"
-        f"  {tool_cmd} next --session {session_dir}\n"
-        f"  {tool_cmd} submit --session {session_dir} --node <NODE_ID> <<'PFEXEC'\n"
-        f"  <your output>\n"
-        f"  PFEXEC\n"
-        f"\n"
-        f"Workflow:\n"
-        f"1. Run \"next\" to see your current task\n"
-        f"2. Think about the task and produce your answer\n"
-        f"3. Run \"submit\" with your answer\n"
-        f"4. Repeat until the engine says DONE\n"
-        f"5. If the engine says FORK, it will provide a lesson — incorporate it and continue\n"
-        f"\n"
-        f"When done, output the final answer as plain text."
+        f'You are solving a problem step by step using the pfexec workflow engine.\n'
+        f'\n'
+        f'Commands:\n'
+        f'  {tool_cmd} next --session {session_dir}\n'
+        f'  {tool_cmd} submit --session {session_dir} --node <NODE_ID> <<\'PFEXEC\'\n'
+        f'  <your output>\n'
+        f'  PFEXEC\n'
+        f'\n'
+        f'Workflow:\n'
+        f'1. Run "next" to see your current task\n'
+        f'2. Think about the task and produce your answer\n'
+        f'3. Run "submit" with your answer\n'
+        f'4. Repeat until the engine says DONE\n'
+        f'5. If the engine says FORK, it will provide a lesson — incorporate it and continue\n'
+        f'\n'
+        f'IMPORTANT: When submitting output for the FINAL node, output ONLY the direct answer '
+        f'in 1-5 words. No explanations, no qualifiers, no reasoning. '
+        f'For yes/no questions, answer only "yes" or "no".\n'
+        f'\n'
+        f'When done, output the final answer as plain text.'
     )
 
     claude_result = subprocess.run(
@@ -98,6 +103,14 @@ def run(workflow: WorkflowSpec, user_input: str, config: EngineConfig,
     final_answer = state.node_outputs.get(terminal_id, "")
     if not final_answer and all_outputs:
         final_answer = all_outputs[-1]
+
+    if final_answer:
+        cleaned = re.sub(r'\*\*([^*]+)\*\*', r'\1', final_answer)
+        cleaned = re.sub(r'\*([^*]+)\*', r'\1', cleaned)
+        cleaned = cleaned.strip()
+        lines = [l.strip() for l in cleaned.split('\n') if l.strip()]
+        if lines:
+            final_answer = lines[-1]
 
     return EngineResult(
         final_state=state,

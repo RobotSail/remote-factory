@@ -91,11 +91,13 @@ def cmd_next(args: argparse.Namespace) -> None:
 
     if not state.node_outputs:
         data_input = state.user_input
+        task = node.theta_prior.replace("{input}", data_input)
     else:
         prev_keys = [k for k in order[:pointer_idx] if k in state.node_outputs]
         data_input = state.node_outputs[prev_keys[-1]] if prev_keys else state.user_input
-
-    task = node.theta_prior.replace("{input}", data_input)
+        truncated = data_input[:500] + '...' if len(data_input) > 500 else data_input
+        task = node.theta_prior.replace("{input}", truncated)
+        task += '\n\nUse your reasoning from prior steps as additional context.'
 
     print(f"Phase {phase_num}: {nid}")
     print(f"Role: {node.spec}")
