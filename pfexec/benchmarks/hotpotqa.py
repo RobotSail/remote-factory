@@ -182,6 +182,8 @@ def main():
                         help="Run only first N questions")
     parser.add_argument("--start", type=int, default=0,
                         help="Skip first N questions")
+    parser.add_argument("--particles", type=int, default=None,
+                        help="Number of particles (overrides mode default)")
     args = parser.parse_args()
 
     runner: Callable[[WorkflowSpec, str, EngineConfig], EngineResult] | None = None
@@ -247,6 +249,16 @@ def main():
         backend = ClaudeBackend()
         config = EngineConfig(n_particles=5, tau=0.3, max_steps=50, observe_mode=args.observe_mode)
         mode = "pfexec" if args.observe_mode == "full" else f"pfexec (observe={args.observe_mode})"
+
+    if args.particles is not None:
+        config = EngineConfig(
+            n_particles=args.particles,
+            tau=config.tau,
+            max_steps=config.max_steps,
+            max_forks=config.max_forks,
+            rewind_steps=config.rewind_steps,
+            observe_mode=config.observe_mode,
+        )
 
     print(f"Running HotpotQA benchmark ({mode})...")
     eval_result = run_benchmark(backend, config, args.limit, runner=runner, start=args.start)
