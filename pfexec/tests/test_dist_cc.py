@@ -600,6 +600,17 @@ def test_wrapped_lesson_extraction():
     assert _extract_lesson(state_empty, config_full, "") == "Try a different approach."
 
 
+def test_session_baseline_dry_run():
+    workflow = _workflow()
+    config = _config()
+    from pfexec.dist.cc.runner_session_baseline import run as run_sb
+    result = run_sb(workflow, 'test input', config, backend_mode='mock')
+    assert result.terminated_by == 'complete'
+    assert result.steps_taken == 3
+    assert result.forks_triggered == 0
+    assert result.output
+
+
 def test_agentic_v3_parse_output():
     from pfexec.dist.cc.runner_agentic import _parse_output
 

@@ -175,6 +175,8 @@ def main():
                             help="Wrapped mode: claude --bare with engine in wrapper")
     mode_group.add_argument("--tool", action="store_true",
                             help="Tool-based mode: Claude drives loop via pfexec CLI")
+    mode_group.add_argument("--session-baseline", action="store_true",
+                            help="Session baseline: SKILL.md + tools, no engine")
     parser.add_argument("--observe-mode", type=str, default="full",
                         choices=["full", "sequential", "rewind", "lightweight", "none"],
                         help="Observe mode for belief updates")
@@ -245,6 +247,16 @@ def main():
 
         runner = tool_runner
         mode = "tool"
+    elif args.session_baseline:
+        from pfexec.dist.cc.runner_session_baseline import run as run_session_baseline
+        backend = ClaudeBackend()
+        config = EngineConfig(n_particles=1, tau=0.0, max_steps=30)
+
+        def session_baseline_runner(workflow, user_input, config):
+            return run_session_baseline(workflow, user_input, config, backend_mode='claude')
+
+        runner = session_baseline_runner
+        mode = "session-baseline"
     else:
         backend = ClaudeBackend()
         config = EngineConfig(n_particles=5, tau=0.3, max_steps=50, observe_mode=args.observe_mode)
