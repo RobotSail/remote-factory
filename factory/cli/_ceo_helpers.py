@@ -49,6 +49,53 @@ from factory.cli.run import _chain_modes
 log = structlog.get_logger()
 
 
+def _tool_exec_protocol(wt_path: Path) -> str:
+    """Return the tool-exec protocol section appended to the CEO prompt."""
+    p = wt_path
+    return (
+        "\n\n# Tool-Based Execution Protocol\n"
+        "\n"
+        "You are executing the workflow using factory tool commands instead of "
+        "following a SKILL.md playbook.\n"
+        "\n"
+        "## Commands\n"
+        "\n"
+        f"  factory workflow tool next {p}\n"
+        f"  factory workflow tool submit {p} --node <NODE_ID> <<'TOOL_OUTPUT'\n"
+        "  <your output>\n"
+        "  TOOL_OUTPUT\n"
+        f"  factory workflow tool status {p}\n"
+        "\n"
+        "## Protocol\n"
+        "\n"
+        '1. Run "next" to see your current task — it tells you the node type, '
+        "role, and what to do\n"
+        "2. Execute the task:\n"
+        "   - For Agent nodes: spawn the agent with "
+        'factory agent <role> --task "..." --project <path>\n'
+        "   - For Study nodes: run the study command shown\n"
+        "   - For Gate nodes: evaluate and respond with PROCEED, RETRY, or HALT\n"
+        "   - For Function nodes: run the command shown\n"
+        '3. Run "submit" with the output\n'
+        "4. The tool returns: CONTINUE, GATE (review needed), RETRY (gate "
+        "failed), HALT, or DONE\n"
+        "5. If RETRY: the tool rewinds to an earlier node — "
+        'run "next" to get the retry task\n'
+        "6. If GATE: evaluate the gate and submit your verdict\n"
+        "7. If DONE: report completion\n"
+        "\n"
+        "## Important\n"
+        "\n"
+        "- The tool manages the workflow DAG — you do NOT need to know the "
+        "full workflow structure\n"
+        "- Gates with evaluator commands run automatically on submit — "
+        "you only review agent gates\n"
+        "- All Sacred Rules still apply — delegate to agents, review their "
+        "output, do not write code\n"
+        '- Start by running "next" to get your first task\n'
+    )
+
+
 # ── flag validation ───────────────────────────────────────────
 
 
@@ -476,6 +523,16 @@ def _execute_ceo(
     else:
         ceo_mode = mode
 
+    tool_exec = getattr(args, "tool_exec", False)
+    if tool_exec:
+        from factory.workflow.tool import tool_init as _tool_init
+
+        try:
+            _tool_init(ceo_mode, wt_path)
+        except Exception as e:
+            log.warning("tool_exec.init_failed", error=str(e), mode=ceo_mode)
+            tool_exec = False
+
     if clean_pr_flag is not None:
         clean_pr_resolved = clean_pr_flag
     else:
@@ -585,7 +642,15 @@ def _execute_ceo(
             mark_read(project_path, pending_ids)
         from factory.models import AgentRunRequest as _RunReq
 
-        prompt = resolve_prompt("ceo", wt_path, use_profile=use_profile, workflow_mode=ceo_mode)
+        if tool_exec:
+            base_prompt = resolve_prompt(
+                "ceo", wt_path, use_profile=use_profile, workflow_mode=None,
+            )
+            prompt = base_prompt + _tool_exec_protocol(wt_path)
+        else:
+            prompt = resolve_prompt(
+                "ceo", wt_path, use_profile=use_profile, workflow_mode=ceo_mode,
+            )
         runner = get_runner(runner_name)
         extras: dict[str, object] = {}
         if _verification_settings_file:
