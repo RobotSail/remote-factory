@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 import uuid
 from pathlib import Path
 
@@ -26,6 +27,8 @@ from factory.workflow.skill_export import _topological_sort
 
 log = structlog.get_logger()
 
+_workflow_cache: dict[str, Workflow] = {}
+
 
 def _load_state(project_path: Path) -> dict:
     state_path = project_path / ".factory" / "tool_session" / "state.json"
@@ -37,10 +40,33 @@ def _save_state(project_path: Path, state: dict) -> None:
     state_path.write_text(json.dumps(state, indent=2))
 
 
-def _get_workflow(state: dict, project_path: Path) -> Workflow:
-    wf = WorkflowRegistry.get_workflow(state["workflow_name"], project_path)
+def _emit_event(project_path: Path, event_type: str, **data: object) -> None:
+    """Append a structured event to .factory/events.jsonl."""
+    event = {
+        "type": event_type,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        **data,
+    }
+    events_file = project_path / ".factory" / "events.jsonl"
+    events_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(events_file, "a") as f:
+        f.write(json.dumps(event) + "\n")
+
+
+def _get_workflow_cached(name: str, project_path: Path) -> Workflow:
+    cache_key = f"{project_path}:{name}"
+    if cache_key in _workflow_cache:
+        return _workflow_cache[cache_key]
+
+    from factory.workflow.definitions import register_all
+
+    all_wf = register_all()
+    wf = all_wf.get(name)
     if not wf:
-        raise ValueError(f"Workflow not found: {state['workflow_name']}")
+        wf = WorkflowRegistry.get_workflow(name, project_path)
+    if not wf:
+        raise ValueError(f"Workflow not found: {name}")
+    _workflow_cache[cache_key] = wf
     return wf
 
 
@@ -69,6 +95,10 @@ def tool_init(workflow_name: str, project_path: Path) -> str:
     }
 
     (session_dir / "state.json").write_text(json.dumps(state, indent=2))
+    _emit_event(
+        project_path, "workflow.tool.init",
+        workflow=workflow_name, session_id=state["session_id"], nodes=len(order),
+    )
     return str(session_dir)
 
 
@@ -89,7 +119,7 @@ def tool_next(project_path: Path) -> str:
     if state["status"] != "active":
         return f"DONE\nWorkflow {state['workflow_name']} completed."
 
-    wf = _get_workflow(state, project_path)
+    wf = _get_workflow_cached(state["workflow_name"], project_path)
     order = state["topo_order"]
     idx = state["pointer_idx"]
 
@@ -112,6 +142,7 @@ def tool_next(project_path: Path) -> str:
                     if not out.exists():
                         out.write_text(artifact)
             log.info("tool.auto_submit", node=nid)
+            _emit_event(project_path, "workflow.tool.auto_submit", node=nid)
             idx += 1
             state["pointer_idx"] = idx
 
@@ -146,6 +177,8 @@ def tool_next(project_path: Path) -> str:
     nid = order[idx]
     node = wf.nodes[nid]
 
+    _emit_event(project_path, "workflow.tool.next", node=nid, node_type=type(node).__name__)
+
     if isinstance(node, GateNode) and node.evaluator_type == "agent":
         return f"GATE\n{_format_gate_task(nid, node, state, project_path)}"
 
@@ -158,9 +191,10 @@ def tool_next(project_path: Path) -> str:
 def tool_submit(project_path: Path, node_id: str, output: str) -> str:
     """Submit output for a node (primarily used for gate verdicts)."""
     state = _load_state(project_path)
-    wf = _get_workflow(state, project_path)
+    wf = _get_workflow_cached(state["workflow_name"], project_path)
 
     state["completed"][node_id] = output
+    _emit_event(project_path, "workflow.tool.submit", node=node_id)
 
     node = wf.nodes.get(node_id)
     if isinstance(node, AgentNode) and node.writes:
@@ -234,6 +268,43 @@ def tool_status(project_path: Path) -> str:
     return "\n".join(lines)
 
 
+def tool_finalize(project_path: Path) -> str:
+    """Finalize the tool session — mark any remaining untracked nodes as complete.
+
+    Scans forward from the current pointer, auto-completing any nodes whose
+    artifacts exist but weren't tracked (e.g., async agents like archivist).
+    """
+    state = _load_state(project_path)
+    wf = _get_workflow_cached(state["workflow_name"], project_path)
+    order = state["topo_order"]
+
+    finalized = []
+    for nid in order:
+        if nid in state["completed"]:
+            continue
+        node = wf.nodes[nid]
+        artifact = _detect_artifact(nid, node, project_path)
+        if artifact is not None:
+            state["completed"][nid] = artifact
+            finalized.append(nid)
+            log.info("tool.finalize", node=nid)
+
+    if len(state["completed"]) >= len(order):
+        state["status"] = "completed"
+
+    state["pointer_idx"] = len(order)
+    _save_state(project_path, state)
+
+    _emit_event(project_path, "workflow.tool.finalize", nodes=finalized)
+
+    if finalized:
+        return (
+            f"Finalized {len(finalized)} node(s): {', '.join(finalized)}\n"
+            f"Progress: {len(state['completed'])}/{len(order)}"
+        )
+    return f"No pending nodes to finalize. Progress: {len(state['completed'])}/{len(order)}"
+
+
 # ── helpers ─────────────────────────────────────────────────────
 
 
@@ -302,7 +373,7 @@ def _format_gate_task(
     reads = ", ".join(sorted(gate_node.reads)) if gate_node.reads else "none"
 
     reloop_targets: list[str] = []
-    wf = _get_workflow(state, project_path)
+    wf = _get_workflow_cached(state["workflow_name"], project_path)
     for edge in wf.edges:
         if edge.source == nid and edge.condition == VerdictType.RELOOP:
             reloop_targets.append(edge.target)
@@ -399,6 +470,10 @@ def _auto_evaluate_fn_gate(
 
     state["gate_results"][nid] = "PROCEED" if gate_passed else "HALT"
     state["completed"][nid] = gate_output
+    _emit_event(
+        project_path, "workflow.tool.gate_eval",
+        gate=nid, result="PROCEED" if gate_passed else "HALT",
+    )
 
     if not gate_passed:
         reloop_target = _find_reloop_target(wf, nid)

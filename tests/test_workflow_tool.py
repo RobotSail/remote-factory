@@ -22,6 +22,9 @@ from factory.workflow.tool import (
     _find_reloop_target,
     _format_gate_task,
     _format_node_task,
+    _get_workflow_cached,
+    _workflow_cache,
+    tool_finalize,
     tool_init,
     tool_next,
     tool_status,
@@ -32,8 +35,10 @@ from factory.workflow.tool import (
 @pytest.fixture(autouse=True)
 def _reset_registry():
     WorkflowRegistry.reset()
+    _workflow_cache.clear()
     yield
     WorkflowRegistry.reset()
+    _workflow_cache.clear()
 
 
 def _simple_workflow() -> Workflow:
@@ -819,3 +824,121 @@ class TestHelpers:
         node = GateNode(id="g", evaluator_type="agent", gate_prompt="review")
         result = _detect_artifact("g", node, tmp_path)
         assert result is None
+
+
+class TestFinalize:
+    def test_finalize_marks_remaining_nodes(self, tmp_path: Path) -> None:
+        """Finalize auto-completes nodes whose artifacts exist but weren't tracked."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        # Write artifacts without calling next/submit
+        strategy_dir = tmp_path / ".factory" / "strategy"
+        strategy_dir.mkdir(parents=True, exist_ok=True)
+        (strategy_dir / "observations.md").write_text(
+            "Detailed observations about the project that exceed the minimum length threshold"
+        )
+        reviews_dir = tmp_path / ".factory" / "reviews"
+        reviews_dir.mkdir(parents=True, exist_ok=True)
+        (reviews_dir / "researcher-latest.md").write_text("Research findings")
+        (reviews_dir / "builder-latest.md").write_text("Built successfully")
+
+        result = tool_finalize(tmp_path)
+
+        assert "Finalized" in result
+        state = json.loads(
+            (tmp_path / ".factory" / "tool_session" / "state.json").read_text()
+        )
+        assert "study" in state["completed"]
+        assert "researcher" in state["completed"]
+        assert "builder" in state["completed"]
+
+    def test_finalize_no_pending(self, tmp_path: Path) -> None:
+        """Finalize with all nodes already complete reports nothing to do."""
+        wf = Workflow(
+            name="test-single-fn",
+            start_node="fn1",
+            nodes={"fn1": FnNode(id="fn1", command="echo done")},
+            edges=[],
+        )
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-single-fn", tmp_path)
+        tool_submit(tmp_path, "fn1", "Done")
+
+        result = tool_finalize(tmp_path)
+
+        assert "No pending nodes" in result
+        state = json.loads(
+            (tmp_path / ".factory" / "tool_session" / "state.json").read_text()
+        )
+        assert state["status"] == "completed"
+
+
+class TestWorkflowCache:
+    def test_cache_avoids_redundant_loads(self, tmp_path: Path) -> None:
+        """Second call to _get_workflow_cached returns from cache dict."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+
+        result1 = _get_workflow_cached("test-simple", tmp_path)
+        cache_key = f"{tmp_path}:test-simple"
+        assert cache_key in _workflow_cache
+
+        result2 = _get_workflow_cached("test-simple", tmp_path)
+        assert result1 is result2
+
+
+class TestEventLogging:
+    def _read_events(self, tmp_path: Path) -> list[dict]:
+        events_file = tmp_path / ".factory" / "events.jsonl"
+        if not events_file.exists():
+            return []
+        return [json.loads(line) for line in events_file.read_text().strip().split("\n") if line]
+
+    def test_events_emitted_on_init(self, tmp_path: Path) -> None:
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+
+        tool_init("test-simple", tmp_path)
+
+        events = self._read_events(tmp_path)
+        init_events = [e for e in events if e["type"] == "workflow.tool.init"]
+        assert len(init_events) == 1
+        assert init_events[0]["workflow"] == "test-simple"
+
+    def test_events_emitted_on_next(self, tmp_path: Path) -> None:
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        tool_next(tmp_path)
+
+        events = self._read_events(tmp_path)
+        next_events = [e for e in events if e["type"] == "workflow.tool.next"]
+        assert len(next_events) == 1
+        assert next_events[0]["node"] == "study"
+
+    def test_events_emitted_on_auto_submit(self, tmp_path: Path) -> None:
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        # Write artifact so auto-submit triggers
+        strategy_dir = tmp_path / ".factory" / "strategy"
+        strategy_dir.mkdir(parents=True, exist_ok=True)
+        (strategy_dir / "observations.md").write_text(
+            "Detailed observations about the project that exceed the minimum length threshold"
+        )
+
+        tool_next(tmp_path)
+
+        events = self._read_events(tmp_path)
+        auto_events = [e for e in events if e["type"] == "workflow.tool.auto_submit"]
+        assert len(auto_events) == 1
+        assert auto_events[0]["node"] == "study"

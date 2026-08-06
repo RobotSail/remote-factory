@@ -249,11 +249,11 @@ def _cmd_tool(args: argparse.Namespace) -> int:
     """Dispatch tool subcommands for step-by-step workflow execution."""
     import sys
 
-    from factory.workflow.tool import tool_init, tool_next, tool_status, tool_submit
+    from factory.workflow.tool import tool_finalize, tool_init, tool_next, tool_status, tool_submit
 
     sub = getattr(args, "tool_command", None)
     if not sub:
-        print("Usage: factory workflow tool {init,next,submit,status}")
+        print("Usage: factory workflow tool {init,next,submit,status,finalize}")
         return 1
 
     project_path = Path(args.project_path).resolve()
@@ -272,6 +272,9 @@ def _cmd_tool(args: argparse.Namespace) -> int:
         return 0
     elif sub == "status":
         print(tool_status(project_path))
+        return 0
+    elif sub == "finalize":
+        print(tool_finalize(project_path))
         return 0
 
     return 1
@@ -333,3 +336,6 @@ def add_workflow_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]
 
     p_tool_status = tool_sub.add_parser("status", help="Show session status")
     p_tool_status.add_argument("project_path", help="Project path")
+
+    p_tool_finalize = tool_sub.add_parser("finalize", help="Finalize session — mark remaining nodes complete")
+    p_tool_finalize.add_argument("project_path", help="Project path")

@@ -90,6 +90,8 @@ def _tool_exec_protocol(wt_path: Path) -> str:
         "- All Sacred Rules still apply — delegate to agents, review output, "
         "do not write code\n"
         '- Start by running "next" to get your first task\n'
+        "8. When the workflow is complete, the session is automatically finalized "
+        "to capture any async nodes\n"
     )
 
 
@@ -666,6 +668,13 @@ def _execute_ceo(
             )
         )
     finally:
+        if tool_exec:
+            try:
+                from factory.workflow.tool import tool_finalize
+                finalize_result = tool_finalize(wt_path)
+                log.info("tool_exec.finalized", result=finalize_result)
+            except Exception:
+                pass
         _stop_ceo_tailer(ceo_tailer)
         complete_cycle_session(project_path, cycle_span_id)
         from factory.ceo_completion import print_resume_hint
