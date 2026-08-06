@@ -68,41 +68,25 @@ def _tool_exec_protocol(wt_path: Path) -> str:
         "\n"
         "## Protocol\n"
         "\n"
-        "For EVERY node, follow this exact cycle:\n"
-        "\n"
-        '1. Run "next" to get your current task\n'
+        '1. Run "next" to see your current task\n'
         "2. Execute the task:\n"
         '   - Agent nodes: run factory agent <role> --task "..." --project <path>\n'
-        "   - Study nodes: run the study command\n"
-        "   - Gate nodes (agent type): read the artifacts and evaluate\n"
-        "   - Function nodes: run the command\n"
-        '3. **IMMEDIATELY call "submit" with the output** — this is MANDATORY\n'
-        "   Every node MUST have a submit call. The tool tracks your progress\n"
-        "   through submit calls. If you skip submit, the node is NOT recorded\n"
-        "   and the workflow cannot advance.\n"
-        '4. Read the tool\'s response: CONTINUE, GATE, RETRY, HALT, or DONE\n'
-        '5. If CONTINUE: run "next" for the next task\n'
-        "6. If GATE: you are now evaluating a gate — read and respond, "
-        "then submit your verdict\n"
-        '7. If RETRY: the tool has rewound — run "next" to get the retry task\n'
-        "8. If DONE: report completion\n"
-        "\n"
-        "CRITICAL: After spawning ANY agent (factory agent <role>), read the output\n"
-        "from .factory/reviews/<role>-latest.md and submit it via "
-        "factory workflow tool submit.\n"
-        "Do NOT proceed to the next task without submitting.\n"
+        "   - Study nodes: run the study command shown\n"
+        "   - Function nodes: run the command shown\n"
+        '3. Run "next" again — the tool auto-detects that the previous node completed\n'
+        "   (by checking for output files) and advances to the next task\n"
+        "4. Repeat until GATE or DONE\n"
+        "5. For GATE nodes: the tool asks you to evaluate — read the artifacts, then\n"
+        '   call "submit" with your verdict (PROCEED, RETRY, or HALT)\n'
+        "6. If RETRY: the tool rewinds — run \"next\" to get the retry task\n"
+        "7. If DONE: report completion\n"
         "\n"
         "## Important\n"
         "\n"
-        "- EVERY node requires a submit call — no exceptions\n"
-        "- After factory agent <role>: read .factory/reviews/<role>-latest.md, "
-        "then submit\n"
-        "- After factory study: read .factory/strategy/observations.md, "
-        "then submit\n"
-        "- The tool manages the DAG — you do NOT need to know the full "
-        "workflow structure\n"
-        "- Gates with evaluator commands (fn type) run automatically on the "
-        "preceding submit\n"
+        "- For most nodes, just run the command and call \"next\" — the tool handles tracking\n"
+        '- Only call "submit" for gate verdicts (PROCEED/RETRY/HALT)\n'
+        "- The tool auto-detects agent completion via .factory/reviews/ files\n"
+        "- The tool auto-evaluates fn gates (precheck, guard) on your behalf\n"
         "- All Sacred Rules still apply — delegate to agents, review output, "
         "do not write code\n"
         '- Start by running "next" to get your first task\n'

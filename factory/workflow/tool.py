@@ -73,7 +73,17 @@ def tool_init(workflow_name: str, project_path: Path) -> str:
 
 
 def tool_next(project_path: Path) -> str:
-    """Get the next node to execute. Returns formatted task description."""
+    """Get the next node to execute.
+
+    Auto-submits any pending node whose artifacts exist:
+    - AgentNode: .factory/reviews/<role>-latest.md or <role>-<tag>-latest.md
+    - Study: .factory/strategy/observations.md
+    - FnNode: declared writes exist
+    - ForkNode: skip (handled by sequential ordering)
+
+    The CEO never calls submit for agent/fn nodes — just next repeatedly.
+    Submit is only needed for gate verdicts.
+    """
     state = _load_state(project_path)
 
     if state["status"] != "active":
@@ -85,52 +95,44 @@ def tool_next(project_path: Path) -> str:
 
     while idx < len(order):
         nid = order[idx]
+
         if nid in state["completed"]:
             idx += 1
             continue
 
         node = wf.nodes[nid]
-        if isinstance(node, AgentNode):
-            role = node.role.value
-            review_file = project_path / ".factory" / "reviews" / f"{role}-latest.md"
-            if review_file.exists():
-                content = review_file.read_text().strip()
-                if content:
-                    state["completed"][nid] = content
-                    if node.writes:
-                        for wp in node.writes:
-                            out = project_path / wp
-                            out.parent.mkdir(parents=True, exist_ok=True)
-                            if not out.exists():
-                                out.write_text(content)
-                    log.info("tool.auto_complete", node=nid, role=role)
-                    idx += 1
-                    state["pointer_idx"] = idx
-                    _save_state(project_path, state)
-                    continue
-        elif isinstance(node, Study):
-            obs_file = project_path / ".factory" / "strategy" / "observations.md"
-            if obs_file.exists():
-                content = obs_file.read_text().strip()
-                if content and len(content) > 50:
-                    state["completed"][nid] = content
-                    log.info("tool.auto_complete", node=nid, type="study")
-                    idx += 1
-                    state["pointer_idx"] = idx
-                    _save_state(project_path, state)
-                    continue
-        elif isinstance(node, FnNode) and node.writes:
-            all_written = all((project_path / wp).exists() for wp in node.writes)
-            if all_written:
-                outputs = []
+        artifact = _detect_artifact(nid, node, project_path)
+
+        if artifact is not None:
+            state["completed"][nid] = artifact
+            if isinstance(node, AgentNode) and node.writes:
                 for wp in node.writes:
-                    outputs.append((project_path / wp).read_text().strip()[:200])
-                state["completed"][nid] = "; ".join(outputs)
-                log.info("tool.auto_complete", node=nid, type="fn")
-                idx += 1
-                state["pointer_idx"] = idx
-                _save_state(project_path, state)
-                continue
+                    out = project_path / wp
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    if not out.exists():
+                        out.write_text(artifact)
+            log.info("tool.auto_submit", node=nid)
+            idx += 1
+            state["pointer_idx"] = idx
+
+            if idx < len(order):
+                next_nid = order[idx]
+                next_node = wf.nodes.get(next_nid)
+                if (
+                    isinstance(next_node, GateNode)
+                    and next_node.evaluator_type == "fn"
+                    and next_node.evaluator_command
+                ):
+                    gate_result = _auto_evaluate_fn_gate(
+                        next_node, project_path, state, wf, order, idx,
+                    )
+                    if gate_result:
+                        return gate_result
+                    idx = state["pointer_idx"]
+
+            _save_state(project_path, state)
+            continue
+
         break
 
     state["pointer_idx"] = idx
@@ -144,17 +146,23 @@ def tool_next(project_path: Path) -> str:
     nid = order[idx]
     node = wf.nodes[nid]
 
+    if isinstance(node, GateNode) and node.evaluator_type == "agent":
+        return f"GATE\n{_format_gate_task(nid, node, state, project_path)}"
+
+    if isinstance(node, GateNode) and node.evaluator_type == "user":
+        return f"APPROVAL_NEEDED\n{node.gate_prompt}"
+
     return _format_node_task(nid, node, wf, state, project_path)
 
 
 def tool_submit(project_path: Path, node_id: str, output: str) -> str:
-    """Submit output for the current node. Returns next action."""
+    """Submit output for a node (primarily used for gate verdicts)."""
     state = _load_state(project_path)
     wf = _get_workflow(state, project_path)
 
     state["completed"][node_id] = output
 
-    node = wf.nodes[node_id]
+    node = wf.nodes.get(node_id)
     if isinstance(node, AgentNode) and node.writes:
         for write_path in node.writes:
             out_file = project_path / write_path
@@ -164,66 +172,28 @@ def tool_submit(project_path: Path, node_id: str, output: str) -> str:
     order = state["topo_order"]
     idx = state["pointer_idx"]
 
-    next_idx = idx + 1
-    if next_idx < len(order):
-        next_nid = order[next_idx]
-        next_node = wf.nodes.get(next_nid)
+    if idx < len(order) and order[idx] == node_id:
+        idx += 1
 
-        if isinstance(next_node, GateNode):
-            if next_node.evaluator_type == "fn" and next_node.evaluator_command:
-                cmd = next_node.evaluator_command.replace("{project_path}", str(project_path))
-                try:
-                    result = subprocess.run(
-                        cmd, shell=True, capture_output=True, text=True, timeout=60,
-                    )
-                    gate_output = result.stdout.strip()
-                    gate_passed = result.returncode == 0 and "FAIL" not in gate_output
-                except subprocess.TimeoutExpired:
-                    gate_output = "Gate command timed out"
-                    gate_passed = False
+    state["pointer_idx"] = idx
 
-                state["gate_results"][next_nid] = "PROCEED" if gate_passed else "HALT"
-                state["completed"][next_nid] = gate_output
-
-                if not gate_passed:
-                    reloop_target = _find_reloop_target(wf, next_nid)
-                    if reloop_target:
-                        iter_key = f"{next_nid}->{reloop_target}"
-                        count = state["iteration_counts"].get(iter_key, 0) + 1
-                        state["iteration_counts"][iter_key] = count
-
-                        if count <= 3:
-                            if reloop_target in order:
-                                state["pointer_idx"] = order.index(reloop_target)
-                            _save_state(project_path, state)
-                            return (
-                                f"RETRY\nGate {next_nid} failed: {gate_output}\n"
-                                f"Retry from: {reloop_target} (attempt {count}/3)"
-                            )
-
-                    state["status"] = "halted"
-                    state["pointer_idx"] = next_idx + 1
-                    _save_state(project_path, state)
-                    return f"HALT\nGate {next_nid} failed: {gate_output}"
-
-                next_idx += 1
-
-            elif next_node.evaluator_type == "agent":
-                state["pointer_idx"] = next_idx
-                _save_state(project_path, state)
-                return f"GATE\n{_format_gate_task(next_nid, next_node, state, project_path)}"
-
-            elif next_node.evaluator_type == "user":
-                state["pointer_idx"] = next_idx
-                _save_state(project_path, state)
-                return f"APPROVAL_NEEDED\n{next_node.gate_prompt}"
-
-    state["pointer_idx"] = next_idx
-
-    if next_idx >= len(order):
+    if idx >= len(order):
         state["status"] = "completed"
         _save_state(project_path, state)
         return "DONE"
+
+    next_nid = order[idx]
+    next_node = wf.nodes.get(next_nid)
+    if (
+        isinstance(next_node, GateNode)
+        and next_node.evaluator_type == "fn"
+        and next_node.evaluator_command
+    ):
+        gate_result = _auto_evaluate_fn_gate(
+            next_node, project_path, state, wf, order, idx,
+        )
+        if gate_result:
+            return gate_result
 
     _save_state(project_path, state)
     return "CONTINUE"
@@ -349,6 +319,111 @@ def _format_gate_task(
         '  HALT reason="<reason>"',
     ]
     return "\n".join(lines)
+
+
+def _detect_artifact(nid: str, node: object, project_path: Path) -> str | None:
+    """Check if a node's output artifact exists. Returns content or None."""
+    reviews_dir = project_path / ".factory" / "reviews"
+
+    if isinstance(node, AgentNode):
+        role = node.role.value
+        tag = nid.replace(f"{role}_", "").replace(role, "")
+        if tag and tag != nid:
+            tagged_file = reviews_dir / f"{role}-{tag}-latest.md"
+            if tagged_file.exists():
+                content = tagged_file.read_text().strip()
+                if content:
+                    return content
+        review_file = reviews_dir / f"{role}-latest.md"
+        if review_file.exists():
+            content = review_file.read_text().strip()
+            if content:
+                return content
+        if node.writes:
+            for wp in node.writes:
+                f = project_path / wp
+                if f.exists():
+                    content = f.read_text().strip()
+                    if content:
+                        return content
+        return None
+
+    elif isinstance(node, Study):
+        obs_file = project_path / ".factory" / "strategy" / "observations.md"
+        if obs_file.exists():
+            content = obs_file.read_text().strip()
+            if content and len(content) > 50:
+                return content
+        return None
+
+    elif isinstance(node, FnNode):
+        if node.writes:
+            all_exist = all((project_path / wp).exists() for wp in node.writes)
+            if all_exist:
+                parts = []
+                for wp in node.writes:
+                    parts.append((project_path / wp).read_text().strip()[:500])
+                return "; ".join(parts) if parts else None
+        return None
+
+    elif isinstance(node, ForkNode):
+        return f"Fork targets: {', '.join(node.targets)}"
+
+    elif isinstance(node, GateNode):
+        return None
+
+    return None
+
+
+def _auto_evaluate_fn_gate(
+    gate_node: GateNode,
+    project_path: Path,
+    state: dict,
+    wf: Workflow,
+    order: list[str],
+    idx: int,
+) -> str | None:
+    """Auto-evaluate a fn gate. Returns RETRY/HALT string or None if passed."""
+    nid = order[idx]
+    assert gate_node.evaluator_command is not None
+    cmd = gate_node.evaluator_command.replace("{project_path}", str(project_path))
+    try:
+        result = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True, timeout=60,
+        )
+        gate_output = result.stdout.strip()
+        gate_passed = result.returncode == 0 and "FAIL" not in gate_output
+    except subprocess.TimeoutExpired:
+        gate_output = "Gate command timed out"
+        gate_passed = False
+
+    state["gate_results"][nid] = "PROCEED" if gate_passed else "HALT"
+    state["completed"][nid] = gate_output
+
+    if not gate_passed:
+        reloop_target = _find_reloop_target(wf, nid)
+        if reloop_target:
+            iter_key = f"{nid}->{reloop_target}"
+            count = state["iteration_counts"].get(iter_key, 0) + 1
+            state["iteration_counts"][iter_key] = count
+
+            if count <= 3:
+                if reloop_target in order:
+                    state["pointer_idx"] = order.index(reloop_target)
+                _save_state(project_path, state)
+                return (
+                    f"RETRY\nGate {nid} failed: {gate_output}\n"
+                    f"Retry from: {reloop_target} (attempt {count}/3)"
+                )
+
+        state["status"] = "halted"
+        state["pointer_idx"] = idx + 1
+        _save_state(project_path, state)
+        return f"HALT\nGate {nid} failed: {gate_output}"
+
+    state["pointer_idx"] = idx + 1
+    _save_state(project_path, state)
+    return None
 
 
 def _find_reloop_target(wf: Workflow, gate_id: str) -> str | None:

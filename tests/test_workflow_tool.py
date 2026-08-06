@@ -18,6 +18,7 @@ from factory.workflow.primitives import (
 )
 from factory.workflow.registry import WorkflowRegistry
 from factory.workflow.tool import (
+    _detect_artifact,
     _find_reloop_target,
     _format_gate_task,
     _format_node_task,
@@ -252,7 +253,8 @@ class TestToolSubmit:
         assert output_file.exists()
         assert output_file.read_text() == "Research findings here"
 
-    def test_submit_returns_gate_for_agent_gate(self, tmp_path: Path) -> None:
+    def test_submit_advances_past_submitted_node(self, tmp_path: Path) -> None:
+        """Submit advances the pointer past the submitted node."""
         wf = _simple_workflow()
         _register_workflow(wf)
         (tmp_path / ".factory").mkdir()
@@ -267,9 +269,12 @@ class TestToolSubmit:
         )
 
         result = tool_submit(tmp_path, "researcher", "Research done")
-        assert result.startswith("GATE")
-        assert "gate_research" in result
-        assert "PROCEED" in result
+        assert result == "CONTINUE"
+
+        # Next call to tool_next should return the agent gate
+        next_result = tool_next(tmp_path)
+        assert "GATE" in next_result
+        assert "gate_research" in next_result
 
     def test_submit_fn_gate_proceed(self, tmp_path: Path) -> None:
         wf = _fn_gate_workflow()
@@ -378,7 +383,8 @@ class TestToolSubmit:
         result = tool_submit(tmp_path, "builder", "Fourth attempt")
         assert result.startswith("HALT")
 
-    def test_submit_user_gate_approval(self, tmp_path: Path) -> None:
+    def test_submit_then_next_returns_user_gate(self, tmp_path: Path) -> None:
+        """After submit, calling next returns user gate as APPROVAL_NEEDED."""
         wf = Workflow(
             name="test-user-gate",
             start_node="strategist",
@@ -409,8 +415,11 @@ class TestToolSubmit:
         tool_init("test-user-gate", tmp_path)
 
         result = tool_submit(tmp_path, "strategist", "Strategy ready")
-        assert result.startswith("APPROVAL_NEEDED")
-        assert "Approve this strategy?" in result
+        assert result == "CONTINUE"
+
+        next_result = tool_next(tmp_path)
+        assert next_result.startswith("APPROVAL_NEEDED")
+        assert "Approve this strategy?" in next_result
 
     def test_submit_returns_done_at_end(self, tmp_path: Path) -> None:
         wf = Workflow(
@@ -469,9 +478,11 @@ class TestToolStatus:
         assert "PROCEED" in result
 
 
-class TestAutoComplete:
-    def test_next_auto_completes_agent_with_review_file(self, tmp_path: Path) -> None:
-        """If an agent's review file exists but submit wasn't called, next skips it."""
+class TestAutoSubmit:
+    """Tests for the primary auto-submit mechanism in tool_next."""
+
+    def test_next_auto_submits_agent(self, tmp_path: Path) -> None:
+        """tool_next auto-submits an agent node when its review file exists."""
         wf = _simple_workflow()
         _register_workflow(wf)
         (tmp_path / ".factory").mkdir()
@@ -480,12 +491,12 @@ class TestAutoComplete:
         # Submit study to advance past it
         tool_submit(tmp_path, "study", "Observations done")
 
-        # Simulate agent ran but submit was skipped: write the review file directly
+        # Simulate agent ran: write the review file directly (no submit)
         reviews_dir = tmp_path / ".factory" / "reviews"
         reviews_dir.mkdir(parents=True, exist_ok=True)
         (reviews_dir / "researcher-latest.md").write_text("Research findings here")
 
-        # tool_next should auto-complete the researcher and return the gate
+        # tool_next should auto-submit the researcher and return the gate
         result = tool_next(tmp_path)
 
         state = json.loads(
@@ -493,16 +504,17 @@ class TestAutoComplete:
         )
         assert "researcher" in state["completed"]
         assert state["completed"]["researcher"] == "Research findings here"
+        assert "GATE" in result
         assert "gate_research" in result
 
-    def test_next_auto_completes_study_with_observations(self, tmp_path: Path) -> None:
-        """If observations.md exists but submit wasn't called, next skips the study."""
+    def test_next_auto_submits_study(self, tmp_path: Path) -> None:
+        """tool_next auto-submits a study node when observations.md exists."""
         wf = _simple_workflow()
         _register_workflow(wf)
         (tmp_path / ".factory").mkdir()
         tool_init("test-simple", tmp_path)
 
-        # Write observations file directly (simulating study ran but submit skipped)
+        # Write observations file directly (no submit)
         strategy_dir = tmp_path / ".factory" / "strategy"
         strategy_dir.mkdir(parents=True, exist_ok=True)
         (strategy_dir / "observations.md").write_text(
@@ -517,8 +529,86 @@ class TestAutoComplete:
         assert "study" in state["completed"]
         assert "researcher" in result
 
-    def test_next_auto_completes_fn_with_output_files(self, tmp_path: Path) -> None:
-        """If a FnNode's declared output files exist, next skips it."""
+    def test_next_stops_at_gate(self, tmp_path: Path) -> None:
+        """tool_next auto-submits agent, then stops at the following agent gate."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        # Write both study and researcher artifacts
+        strategy_dir = tmp_path / ".factory" / "strategy"
+        strategy_dir.mkdir(parents=True, exist_ok=True)
+        (strategy_dir / "observations.md").write_text(
+            "Detailed observations about the project that exceed the minimum length threshold"
+        )
+        reviews_dir = tmp_path / ".factory" / "reviews"
+        reviews_dir.mkdir(parents=True, exist_ok=True)
+        (reviews_dir / "researcher-latest.md").write_text("Research findings")
+
+        result = tool_next(tmp_path)
+
+        state = json.loads(
+            (tmp_path / ".factory" / "tool_session" / "state.json").read_text()
+        )
+        assert "study" in state["completed"]
+        assert "researcher" in state["completed"]
+        assert result.startswith("GATE")
+        assert "gate_research" in result
+
+    def test_next_auto_evaluates_fn_gate(self, tmp_path: Path) -> None:
+        """tool_next auto-submits agent and auto-evaluates following fn gate."""
+        wf = _fn_gate_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-fn-gate", tmp_path)
+
+        # Write builder review file (fn gate passes via "echo PROCEED")
+        reviews_dir = tmp_path / ".factory" / "reviews"
+        reviews_dir.mkdir(parents=True, exist_ok=True)
+        (reviews_dir / "builder-latest.md").write_text("Built successfully")
+
+        result = tool_next(tmp_path)
+
+        state = json.loads(
+            (tmp_path / ".factory" / "tool_session" / "state.json").read_text()
+        )
+        assert "builder" in state["completed"]
+        assert "gate_review" in state["completed"]
+        assert state["gate_results"]["gate_review"] == "PROCEED"
+        # Should return the archivist node (after auto-evaluating gate)
+        assert "archivist" in result
+
+    def test_next_chain_multiple(self, tmp_path: Path) -> None:
+        """tool_next chains through multiple auto-submittable nodes in one call."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        # Write both study observations and researcher review
+        strategy_dir = tmp_path / ".factory" / "strategy"
+        strategy_dir.mkdir(parents=True, exist_ok=True)
+        (strategy_dir / "observations.md").write_text(
+            "Detailed observations about the project that exceed the minimum length threshold"
+        )
+        reviews_dir = tmp_path / ".factory" / "reviews"
+        reviews_dir.mkdir(parents=True, exist_ok=True)
+        (reviews_dir / "researcher-latest.md").write_text("Research findings")
+
+        # Single call to next should skip both and stop at gate
+        result = tool_next(tmp_path)
+
+        state = json.loads(
+            (tmp_path / ".factory" / "tool_session" / "state.json").read_text()
+        )
+        assert "study" in state["completed"]
+        assert "researcher" in state["completed"]
+        assert "GATE" in result
+        assert "gate_research" in result
+
+    def test_next_auto_submits_fn_with_output_files(self, tmp_path: Path) -> None:
+        """tool_next auto-submits a FnNode when its declared output files exist."""
         wf = Workflow(
             name="test-fn-auto",
             start_node="fn1",
@@ -547,8 +637,8 @@ class TestAutoComplete:
         assert "fn1" in state["completed"]
         assert "fn2" in result
 
-    def test_next_does_not_auto_complete_empty_review(self, tmp_path: Path) -> None:
-        """Empty review files should not trigger auto-complete."""
+    def test_next_does_not_auto_submit_empty_review(self, tmp_path: Path) -> None:
+        """Empty review files should not trigger auto-submit."""
         wf = _simple_workflow()
         _register_workflow(wf)
         (tmp_path / ".factory").mkdir()
@@ -564,31 +654,34 @@ class TestAutoComplete:
         assert "researcher" in result
         assert "Type: Agent" in result
 
-    def test_next_auto_completes_multiple_consecutive(self, tmp_path: Path) -> None:
-        """Auto-complete should chain through multiple skippable nodes."""
-        wf = _simple_workflow()
+    def test_next_auto_submits_fork_node(self, tmp_path: Path) -> None:
+        """ForkNodes are auto-submitted immediately (structural nodes)."""
+        from factory.workflow.primitives import ForkNode
+        wf = Workflow(
+            name="test-fork-auto",
+            start_node="fork1",
+            nodes={
+                "fork1": ForkNode(id="fork1", targets=["a", "b"]),
+                "a": FnNode(id="a", command="echo a"),
+                "b": FnNode(id="b", command="echo b"),
+            },
+            edges=[
+                Edge(source="fork1", target="a"),
+                Edge(source="fork1", target="b"),
+            ],
+        )
         _register_workflow(wf)
         (tmp_path / ".factory").mkdir()
-        tool_init("test-simple", tmp_path)
-
-        # Write both study observations and researcher review
-        strategy_dir = tmp_path / ".factory" / "strategy"
-        strategy_dir.mkdir(parents=True, exist_ok=True)
-        (strategy_dir / "observations.md").write_text(
-            "Detailed observations about the project that exceed the minimum length threshold"
-        )
-        reviews_dir = tmp_path / ".factory" / "reviews"
-        reviews_dir.mkdir(parents=True, exist_ok=True)
-        (reviews_dir / "researcher-latest.md").write_text("Research findings")
+        tool_init("test-fork-auto", tmp_path)
 
         result = tool_next(tmp_path)
 
         state = json.loads(
             (tmp_path / ".factory" / "tool_session" / "state.json").read_text()
         )
-        assert "study" in state["completed"]
-        assert "researcher" in state["completed"]
-        assert "gate_research" in result
+        assert "fork1" in state["completed"]
+        assert "Fork targets" in state["completed"]["fork1"]
+        assert "a" in result or "b" in result
 
 
 class TestHelpers:
@@ -654,3 +747,75 @@ class TestHelpers:
         assert "PROCEED" in result
         assert "RETRY" in result
         assert "researcher" in result
+
+    def test_detect_artifact_agent_review_file(self, tmp_path: Path) -> None:
+        node = AgentNode(id="researcher", role=AgentRole.RESEARCHER, prompt_template="r")
+        reviews_dir = tmp_path / ".factory" / "reviews"
+        reviews_dir.mkdir(parents=True, exist_ok=True)
+        (reviews_dir / "researcher-latest.md").write_text("findings")
+
+        result = _detect_artifact("researcher", node, tmp_path)
+        assert result == "findings"
+
+    def test_detect_artifact_agent_empty(self, tmp_path: Path) -> None:
+        node = AgentNode(id="researcher", role=AgentRole.RESEARCHER, prompt_template="r")
+        reviews_dir = tmp_path / ".factory" / "reviews"
+        reviews_dir.mkdir(parents=True, exist_ok=True)
+        (reviews_dir / "researcher-latest.md").write_text("")
+
+        result = _detect_artifact("researcher", node, tmp_path)
+        assert result is None
+
+    def test_detect_artifact_agent_tagged(self, tmp_path: Path) -> None:
+        node = AgentNode(id="researcher_similar", role=AgentRole.RESEARCHER, prompt_template="r")
+        reviews_dir = tmp_path / ".factory" / "reviews"
+        reviews_dir.mkdir(parents=True, exist_ok=True)
+        (reviews_dir / "researcher-similar-latest.md").write_text("similar findings")
+
+        result = _detect_artifact("researcher_similar", node, tmp_path)
+        assert result == "similar findings"
+
+    def test_detect_artifact_study(self, tmp_path: Path) -> None:
+        node = Study(id="study", command="factory study {project_path}")
+        strategy_dir = tmp_path / ".factory" / "strategy"
+        strategy_dir.mkdir(parents=True, exist_ok=True)
+        (strategy_dir / "observations.md").write_text("x" * 100)
+
+        result = _detect_artifact("study", node, tmp_path)
+        assert result is not None
+
+    def test_detect_artifact_study_too_short(self, tmp_path: Path) -> None:
+        node = Study(id="study", command="factory study {project_path}")
+        strategy_dir = tmp_path / ".factory" / "strategy"
+        strategy_dir.mkdir(parents=True, exist_ok=True)
+        (strategy_dir / "observations.md").write_text("short")
+
+        result = _detect_artifact("study", node, tmp_path)
+        assert result is None
+
+    def test_detect_artifact_fn_node(self, tmp_path: Path) -> None:
+        node = FnNode(id="fn1", command="echo hello", writes={".factory/out.md"})
+        (tmp_path / ".factory").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".factory" / "out.md").write_text("output")
+
+        result = _detect_artifact("fn1", node, tmp_path)
+        assert result == "output"
+
+    def test_detect_artifact_fn_missing_writes(self, tmp_path: Path) -> None:
+        node = FnNode(id="fn1", command="echo hello", writes={".factory/out.md"})
+        (tmp_path / ".factory").mkdir(parents=True, exist_ok=True)
+
+        result = _detect_artifact("fn1", node, tmp_path)
+        assert result is None
+
+    def test_detect_artifact_fork(self, tmp_path: Path) -> None:
+        from factory.workflow.primitives import ForkNode
+        node = ForkNode(id="fork1", targets=["a", "b"])
+        result = _detect_artifact("fork1", node, tmp_path)
+        assert result is not None
+        assert "Fork targets" in result
+
+    def test_detect_artifact_gate_returns_none(self, tmp_path: Path) -> None:
+        node = GateNode(id="g", evaluator_type="agent", gate_prompt="review")
+        result = _detect_artifact("g", node, tmp_path)
+        assert result is None
