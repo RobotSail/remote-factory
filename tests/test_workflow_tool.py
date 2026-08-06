@@ -469,6 +469,128 @@ class TestToolStatus:
         assert "PROCEED" in result
 
 
+class TestAutoComplete:
+    def test_next_auto_completes_agent_with_review_file(self, tmp_path: Path) -> None:
+        """If an agent's review file exists but submit wasn't called, next skips it."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        # Submit study to advance past it
+        tool_submit(tmp_path, "study", "Observations done")
+
+        # Simulate agent ran but submit was skipped: write the review file directly
+        reviews_dir = tmp_path / ".factory" / "reviews"
+        reviews_dir.mkdir(parents=True, exist_ok=True)
+        (reviews_dir / "researcher-latest.md").write_text("Research findings here")
+
+        # tool_next should auto-complete the researcher and return the gate
+        result = tool_next(tmp_path)
+
+        state = json.loads(
+            (tmp_path / ".factory" / "tool_session" / "state.json").read_text()
+        )
+        assert "researcher" in state["completed"]
+        assert state["completed"]["researcher"] == "Research findings here"
+        assert "gate_research" in result
+
+    def test_next_auto_completes_study_with_observations(self, tmp_path: Path) -> None:
+        """If observations.md exists but submit wasn't called, next skips the study."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        # Write observations file directly (simulating study ran but submit skipped)
+        strategy_dir = tmp_path / ".factory" / "strategy"
+        strategy_dir.mkdir(parents=True, exist_ok=True)
+        (strategy_dir / "observations.md").write_text(
+            "Detailed observations about the project that exceed the minimum length threshold"
+        )
+
+        result = tool_next(tmp_path)
+
+        state = json.loads(
+            (tmp_path / ".factory" / "tool_session" / "state.json").read_text()
+        )
+        assert "study" in state["completed"]
+        assert "researcher" in result
+
+    def test_next_auto_completes_fn_with_output_files(self, tmp_path: Path) -> None:
+        """If a FnNode's declared output files exist, next skips it."""
+        wf = Workflow(
+            name="test-fn-auto",
+            start_node="fn1",
+            nodes={
+                "fn1": FnNode(
+                    id="fn1",
+                    command="echo hello",
+                    writes={".factory/output.md"},
+                ),
+                "fn2": FnNode(id="fn2", command="echo done"),
+            },
+            edges=[Edge(source="fn1", target="fn2")],
+        )
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-fn-auto", tmp_path)
+
+        # Write the output file directly
+        (tmp_path / ".factory" / "output.md").write_text("Generated output")
+
+        result = tool_next(tmp_path)
+
+        state = json.loads(
+            (tmp_path / ".factory" / "tool_session" / "state.json").read_text()
+        )
+        assert "fn1" in state["completed"]
+        assert "fn2" in result
+
+    def test_next_does_not_auto_complete_empty_review(self, tmp_path: Path) -> None:
+        """Empty review files should not trigger auto-complete."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        tool_submit(tmp_path, "study", "Observations done")
+
+        reviews_dir = tmp_path / ".factory" / "reviews"
+        reviews_dir.mkdir(parents=True, exist_ok=True)
+        (reviews_dir / "researcher-latest.md").write_text("")
+
+        result = tool_next(tmp_path)
+        assert "researcher" in result
+        assert "Type: Agent" in result
+
+    def test_next_auto_completes_multiple_consecutive(self, tmp_path: Path) -> None:
+        """Auto-complete should chain through multiple skippable nodes."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        # Write both study observations and researcher review
+        strategy_dir = tmp_path / ".factory" / "strategy"
+        strategy_dir.mkdir(parents=True, exist_ok=True)
+        (strategy_dir / "observations.md").write_text(
+            "Detailed observations about the project that exceed the minimum length threshold"
+        )
+        reviews_dir = tmp_path / ".factory" / "reviews"
+        reviews_dir.mkdir(parents=True, exist_ok=True)
+        (reviews_dir / "researcher-latest.md").write_text("Research findings")
+
+        result = tool_next(tmp_path)
+
+        state = json.loads(
+            (tmp_path / ".factory" / "tool_session" / "state.json").read_text()
+        )
+        assert "study" in state["completed"]
+        assert "researcher" in state["completed"]
+        assert "gate_research" in result
+
+
 class TestHelpers:
     def test_find_reloop_target(self) -> None:
         wf = _simple_workflow()

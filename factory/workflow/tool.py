@@ -83,6 +83,59 @@ def tool_next(project_path: Path) -> str:
     order = state["topo_order"]
     idx = state["pointer_idx"]
 
+    while idx < len(order):
+        nid = order[idx]
+        if nid in state["completed"]:
+            idx += 1
+            continue
+
+        node = wf.nodes[nid]
+        if isinstance(node, AgentNode):
+            role = node.role.value
+            review_file = project_path / ".factory" / "reviews" / f"{role}-latest.md"
+            if review_file.exists():
+                content = review_file.read_text().strip()
+                if content:
+                    state["completed"][nid] = content
+                    if node.writes:
+                        for wp in node.writes:
+                            out = project_path / wp
+                            out.parent.mkdir(parents=True, exist_ok=True)
+                            if not out.exists():
+                                out.write_text(content)
+                    log.info("tool.auto_complete", node=nid, role=role)
+                    idx += 1
+                    state["pointer_idx"] = idx
+                    _save_state(project_path, state)
+                    continue
+        elif isinstance(node, Study):
+            obs_file = project_path / ".factory" / "strategy" / "observations.md"
+            if obs_file.exists():
+                content = obs_file.read_text().strip()
+                if content and len(content) > 50:
+                    state["completed"][nid] = content
+                    log.info("tool.auto_complete", node=nid, type="study")
+                    idx += 1
+                    state["pointer_idx"] = idx
+                    _save_state(project_path, state)
+                    continue
+        elif isinstance(node, FnNode) and node.writes:
+            all_written = all((project_path / wp).exists() for wp in node.writes)
+            if all_written:
+                outputs = []
+                for wp in node.writes:
+                    outputs.append((project_path / wp).read_text().strip()[:200])
+                state["completed"][nid] = "; ".join(outputs)
+                log.info("tool.auto_complete", node=nid, type="fn")
+                idx += 1
+                state["pointer_idx"] = idx
+                _save_state(project_path, state)
+                continue
+        break
+
+    state["pointer_idx"] = idx
+    _save_state(project_path, state)
+
     if idx >= len(order):
         state["status"] = "completed"
         _save_state(project_path, state)
