@@ -524,10 +524,19 @@ def _execute_ceo(
     else:
         ceo_mode = mode
 
+    headless_prompt_override: str | None = None
+    if engine == "tool" and headless:
+        base = resolve_prompt("ceo", wt_path, use_profile=use_profile, workflow_mode=None)
+        headless_prompt_override = base + _tool_exec_protocol(wt_path)
+
     if engine == "deterministic":
         if not headless:
-            print("Error: --engine deterministic requires --headless", file=sys.stderr)
-            return 1
+            print(
+                "WARNING: --engine deterministic runs headless (no interactive CEO). "
+                "Adding --headless implicitly.",
+                file=sys.stderr,
+            )
+            headless = True
 
     if engine == "tool":
         from factory.workflow.tool import tool_init as _tool_init
@@ -637,6 +646,7 @@ def _execute_ceo(
             ceo_mode=ceo_mode,
             verification_settings_file=_verification_settings_file,
             engine=engine,
+            prompt_override=headless_prompt_override,
         )
 
     try:
@@ -724,12 +734,67 @@ def _run_headless(
     ceo_mode: str,
     verification_settings_file: str | None,
     engine: str = "skill",
+    prompt_override: str | None = None,
 ) -> int:
     """Run the CEO in headless mode with completion guard."""
     from factory.ceo_completion import run_ceo_with_completion_guard
     from factory.messages import mark_read
     from factory.agents.runner import complete_cycle_session
     from factory.worktree import remove_worktree
+
+    if engine == "deterministic":
+        import asyncio
+        from factory.workflow.executor import WorkflowExecutor
+        from factory.workflow.registry import WorkflowRegistry
+        from factory.workflow.primitives import DEFAULT_AGENT_POOL
+
+        wf = WorkflowRegistry.get_workflow(ceo_mode, wt_path)
+        if not wf:
+            print(f'Error: workflow "{ceo_mode}" not found', file=sys.stderr)
+            _stop_ceo_tailer(ceo_tailer)
+            complete_cycle_session(project_path, cycle_span_id)
+            return 1
+
+        executor = WorkflowExecutor(wf, wt_path, agent_pool=DEFAULT_AGENT_POOL)
+        try:
+            exec_result = asyncio.run(executor.execute())
+            print(json.dumps({
+                "workflow": ceo_mode,
+                "engine": "deterministic",
+                "success": exec_result.success,
+                "nodes_executed": exec_result.nodes_executed,
+                "duration_ms": round(exec_result.duration_ms, 1),
+            }, indent=2))
+            code = 0 if exec_result.success else 1
+            if code != 0:
+                return code
+            return _chain_modes(
+                project_path,
+                focus=focus,
+                min_growth=min_growth,
+                max_new=max_new,
+                branch=branch,
+                already_improved=mode in ("improve", "meta") or discover_only,
+                model=model,
+                no_github=no_github,
+                use_profile=use_profile,
+                tmux_persist=tmux_persist,
+                background=background,
+                completed_mode=mode,
+                no_worktree=no_worktree,
+            )
+        finally:
+            _stop_ceo_tailer(ceo_tailer)
+            complete_cycle_session(project_path, cycle_span_id)
+            from factory.ceo_completion import print_resume_hint
+
+            print_resume_hint(project_path)
+            if not no_worktree and wt_branch:
+                remove_worktree(project_path, wt_path, wt_branch)
+            if needs_materialize and _is_scaffold_only(project_path):
+                import shutil
+
+                shutil.rmtree(project_path, ignore_errors=True)
 
     try:
         result, code = _run(
@@ -747,6 +812,7 @@ def _run_headless(
                 background=background,
                 workflow_mode=ceo_mode,
                 settings_file=verification_settings_file,
+                prompt_override=prompt_override,
             )
         )
         print(result)

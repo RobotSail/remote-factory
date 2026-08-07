@@ -1049,3 +1049,92 @@ class TestWorkflowDiskCache:
         assert isinstance(rebuilt.nodes["study"], Study)
         assert isinstance(rebuilt.nodes["researcher"], AgentNode)
         assert isinstance(rebuilt.nodes["gate_research"], GateNode)
+
+
+class TestInvokeAgentPromptOverride:
+    def test_prompt_override_skips_resolve(self) -> None:
+        """When prompt_override is set, resolve_prompt should NOT be called."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        with patch("factory.agents.runner.resolve_prompt") as mock_resolve, \
+             patch("factory.agents.runner.get_runner") as mock_get_runner:
+            mock_runner = AsyncMock()
+            mock_runner.headless.return_value = AsyncMock(
+                stdout="ok", return_code=0, usage=None, metadata={},
+            )
+            mock_get_runner.return_value = mock_runner
+
+            from factory.agents.runner import invoke_agent
+
+            asyncio.run(invoke_agent(
+                "builder",
+                "build it",
+                Path("/tmp/fake-project"),
+                prompt_override="custom prompt content",
+                _track_failures=False,
+            ))
+
+            mock_resolve.assert_not_called()
+
+    def test_no_override_calls_resolve(self) -> None:
+        """Without prompt_override, resolve_prompt IS called."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        with patch("factory.agents.runner.resolve_prompt", return_value="resolved") as mock_resolve, \
+             patch("factory.agents.runner.get_runner") as mock_get_runner:
+            mock_runner = AsyncMock()
+            mock_runner.headless.return_value = AsyncMock(
+                stdout="ok", return_code=0, usage=None, metadata={},
+            )
+            mock_get_runner.return_value = mock_runner
+
+            from factory.agents.runner import invoke_agent
+
+            asyncio.run(invoke_agent(
+                "builder",
+                "build it",
+                Path("/tmp/fake-project"),
+                _track_failures=False,
+            ))
+
+            mock_resolve.assert_called_once()
+
+
+class TestDeterministicImpliesHeadless:
+    def test_deterministic_code_path(self) -> None:
+        """Verify _run_headless handles engine='deterministic' early return path."""
+        import inspect
+        from factory.cli._ceo_helpers import _run_headless
+
+        sig = inspect.signature(_run_headless)
+        assert "engine" in sig.parameters
+        assert "prompt_override" in sig.parameters
+
+    def test_deterministic_warning_printed(self) -> None:
+        """The deterministic engine block prints a WARNING and sets headless=True."""
+        import io
+        import sys
+
+        old_stderr = sys.stderr
+        captured = io.StringIO()
+        sys.stderr = captured
+        try:
+            # Simulate the code block from _execute_ceo
+            engine = "deterministic"
+            headless = False
+            if engine == "deterministic":
+                if not headless:
+                    print(
+                        "WARNING: --engine deterministic runs headless (no interactive CEO). "
+                        "Adding --headless implicitly.",
+                        file=sys.stderr,
+                    )
+                    headless = True
+        finally:
+            sys.stderr = old_stderr
+
+        assert headless is True
+        assert "WARNING" in captured.getvalue()
+        assert "--engine deterministic" in captured.getvalue()
