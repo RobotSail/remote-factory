@@ -450,6 +450,9 @@ def add_entry_point_parsers(sub: argparse._SubParsersAction) -> None:  # type: i
                     help="Load an existing plan into design mode instead of running research. "
                          "Accepts a local file path, GitHub issue URL, issue number, or fuzzy search string. "
                          "Requires --mode design; mutually exclusive with --focus and --prompt")
+    p.add_argument("--just-plan", action="store_true", default=False, dest="just_plan",
+                    help="Plan-only mode: research + strategy + GitHub publishing, NO implementation. "
+                         "Requires --mode design. Mutually exclusive with --from-plan and --prompt.")
     p.add_argument("--engine", choices=["skill", "tool", "deterministic"], default="skill",
                     help="Execution engine: skill (CEO follows SKILL.md, default), "
                          "tool (CEO drives via factory workflow tool commands), "

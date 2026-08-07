@@ -45,19 +45,6 @@ def _mode_suffix(mode: str, discover_only: bool) -> str:
             "run --mode improve afterward to harden what works. "
             "The full step-by-step playbook is in your system prompt above."
         ),
-        "plan": (
-            "\n\nRun Plan mode: prior plan check + research + strategy + optional GitHub publishing "
-            "with NO implementation. "
-            "First check GitHub issues (plan label) and .factory/archive/ for prior plans matching "
-            "the focus topic — if found, ask the user whether to continue an existing plan or start fresh. "
-            "Run 3 parallel researchers (domain, practices, constraints), CEO review gate, then "
-            "synthesize a phased plan via the Strategist, then a single user approval gate: "
-            "'Keep this plan? Approving will publish it as a comment on the GitHub issue "
-            "and seed the backlog with plan phases.' "
-            "RELOOP re-runs the Strategist with user feedback. HALT exits without publishing. "
-            "Do NOT transition to build or improve mode — plan mode is terminal. "
-            "If the user previously ran plan mode, check for prior plans before researching.\n"
-        ),
     }
     if mode == "discover":
         if discover_only:
@@ -107,6 +94,7 @@ def _build_ceo_task(
     update_existing_mode: str | None = None,
     from_plan: str | None = None,
     from_plan_feedback: list[str] | None = None,
+    just_plan: bool = False,
 ) -> str:
     """Build the CEO agent task string from mode and optional context."""
     shown_mode = display_mode if display_mode is not None else mode
@@ -148,6 +136,31 @@ def _build_ceo_task(
         task += (
             "Do NOT run parallel researchers. Do NOT regenerate the plan from scratch. "
             "The plan content has already been resolved and persisted.\n"
+        )
+    elif just_plan:
+        task += (
+            '\n\n## Plan Loop (Just Plan)\n\n'
+            '**just_plan: true**\n\n'
+            'Run the full Plan mode workflow: research + strategy + approval + GitHub publish.\n\n'
+            '1. Check for prior plans (GitHub issues with plan label, .factory/archive/)\n'
+            '2. Run 3 parallel researchers (domain, practices, constraints)\n'
+            '3. CEO review gate\n'
+            '4. Strategist synthesizes phased plan\n'
+            '5. Single user approval gate: Keep this plan?\n'
+            '6. On approval: publish to GitHub + seed backlog\n\n'
+            'Terminal mode — do NOT transition to build or improve.\n'
+            '\n### Post-Approval: GitHub Publish (MANDATORY)\n\n'
+            'After the user approves the plan, you MUST:\n\n'
+            '1. Create the plan label if it does not exist: '
+            '`gh label create plan --description "Approved plan" --color 0366d6 --force`\n'
+            '2. If --focus targets a GitHub issue number, post the plan as a comment on that issue '
+            'and add the plan label:\n'
+            '   - `gh issue comment <NUMBER> --body-file .factory/strategy/current.md`\n'
+            '   - `gh issue edit <NUMBER> --add-label plan`\n'
+            '3. Otherwise, create a new issue with the plan label:\n'
+            '   - `gh issue create --title "Plan: <focus>" --body-file .factory/strategy/current.md --label plan`\n'
+            '4. Seed the backlog: extract phase headers from current.md and append to backlog.md\n\n'
+            'Do NOT skip this step. Do NOT exit without publishing.\n'
         )
     elif design_existing:
         task += (

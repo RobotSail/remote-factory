@@ -99,7 +99,7 @@ def _tool_exec_protocol(wt_path: Path) -> str:
 
 def _validate_ceo_flags(
     args: argparse.Namespace,
-) -> tuple[str, bool, bool, bool, str | None, str | None, str | None, str | None, bool, str | None] | int:
+) -> tuple[str, bool, bool, bool, str | None, str | None, str | None, str | None, bool, str | None, bool] | int:
     """Validate and resolve top-level CLI flags. Returns parsed values or an error code."""
     mode: str = getattr(args, "mode", "auto")
     if mode == "interactive":
@@ -116,10 +116,22 @@ def _validate_ceo_flags(
     dir_name: str | None = getattr(args, "dir", None)
     auto_approve: bool = getattr(args, "auto_approve", False)
     from_plan: str | None = getattr(args, "from_plan", None)
+    just_plan: bool = getattr(args, "just_plan", False)
 
     if auto_approve and mode != "design":
         print("Error: --auto-approve only applies to --mode design", file=sys.stderr)
         return 1
+
+    if just_plan:
+        if mode != "design":
+            print("Error: --just-plan requires --mode design", file=sys.stderr)
+            return 1
+        if from_plan:
+            print("Error: --just-plan and --from-plan are mutually exclusive.", file=sys.stderr)
+            return 1
+        if prompt_file:
+            print("Error: --just-plan and --prompt are mutually exclusive.", file=sys.stderr)
+            return 1
 
     if from_plan:
         if mode != "design":
@@ -183,7 +195,7 @@ def _validate_ceo_flags(
                 file=sys.stderr,
             )
             return 1
-        if focus and not _design_is_existing:
+        if focus and not _design_is_existing and not just_plan:
             print(
                 "Error: --mode design and --focus are mutually exclusive "
                 "for new ideas. To discuss a topic on an existing project, "
@@ -216,7 +228,7 @@ def _validate_ceo_flags(
         )
         return 1
 
-    return (mode, headless, bg, bg_agents, prompt_file, focus, dir_name, refine_request, auto_approve, from_plan)
+    return (mode, headless, bg, bg_agents, prompt_file, focus, dir_name, refine_request, auto_approve, from_plan, just_plan)
 
 
 # ── project resolution ────────────────────────────────────────
@@ -356,6 +368,7 @@ def _validate_late_flags(
     project_path: Path,
     no_github: bool,
     issue_number: int | None,
+    just_plan: bool = False,
 ) -> int | None:
     """Run validations that depend on resolved project state. Returns error code or None."""
     if mode == "research" and not research_ideation and not _has_research_target(project_path):
@@ -375,10 +388,10 @@ def _validate_late_flags(
         )
         return 1
 
-    if focus and mode not in ("improve", "research", "create", "evolve", "frontend-design", "frontend-design-discover", "plan") and not design_existing:
+    if focus and mode not in ("improve", "research", "create", "evolve", "frontend-design", "frontend-design-discover") and not design_existing and not just_plan:
         print(
             f"Error: --focus (targeted mode) only works in improve, research, create, evolve, frontend-design, "
-            f"frontend-design-discover, or plan mode, "
+            f"frontend-design-discover, or design (with --just-plan) mode, "
             f"got '{mode}'. The project must already be built before targeting specific items.",
             file=sys.stderr,
         )
@@ -417,6 +430,7 @@ def _execute_ceo(
     no_github: bool = False,
     raw_path: str = "",
     from_plan: str | None = None,
+    just_plan: bool = False,
 ) -> int:
     """Set up worktree, build task, and run the CEO agent."""
     from factory.agents.runner import begin_cycle_session, complete_cycle_session, resolve_prompt
@@ -586,6 +600,7 @@ def _execute_ceo(
         update_existing_mode=update_existing_mode,
         from_plan=resolved_plan.plan if resolved_plan else None,
         from_plan_feedback=resolved_plan.feedback if resolved_plan else None,
+        just_plan=just_plan,
     )
 
     session_name = _derive_session_name(
@@ -645,6 +660,7 @@ def _execute_ceo(
             no_worktree=no_worktree,
             ceo_mode=ceo_mode,
             verification_settings_file=_verification_settings_file,
+            just_plan=just_plan,
             engine=engine,
             prompt_override=headless_prompt_override,
         )
@@ -733,6 +749,7 @@ def _run_headless(
     no_worktree: bool,
     ceo_mode: str,
     verification_settings_file: str | None,
+    just_plan: bool = False,
     engine: str = "skill",
     prompt_override: str | None = None,
 ) -> int:
@@ -820,6 +837,7 @@ def _run_headless(
             mark_read(project_path, pending_ids)
         if code != 0:
             return code
+        chain_mode = "plan" if just_plan else mode
         return _chain_modes(
             project_path,
             focus=focus,
@@ -832,7 +850,7 @@ def _run_headless(
             use_profile=use_profile,
             tmux_persist=tmux_persist,
             background=background,
-            completed_mode=mode,
+            completed_mode=chain_mode,
             no_worktree=no_worktree,
         )
     finally:
