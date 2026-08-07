@@ -65,15 +65,23 @@ def _tool_exec_protocol(wt_path: Path) -> str:
         "\n"
         "You are executing the workflow using factory tool commands instead of "
         "following a SKILL.md playbook.\n"
-        "\n"
-        "## Commands\n"
+    )
+
+    if overview:
+        protocol += (
+            "\n## Workflow Map\n"
+            "\n"
+            f"{overview}\n"
+        )
+
+    protocol += (
+        "\n## Commands\n"
         "\n"
         f"  factory workflow tool next {p}\n"
         f"  factory workflow tool submit {p} --node <NODE_ID> <<'TOOL_OUTPUT'\n"
         "  <your output>\n"
         "  TOOL_OUTPUT\n"
         f"  factory workflow tool status {p}\n"
-        f"  factory workflow tool overview {p}\n"
         f"  factory workflow tool curr {p}\n"
         "\n"
         "## Protocol\n"
@@ -102,13 +110,6 @@ def _tool_exec_protocol(wt_path: Path) -> str:
         "do not write code\n"
         '- Start by running "next" to get your first task\n'
     )
-
-    if overview:
-        protocol += (
-            "\n## Workflow Map\n"
-            "\n"
-            f"{overview}\n"
-        )
 
     return protocol
 
