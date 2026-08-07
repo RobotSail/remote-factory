@@ -988,14 +988,14 @@ class TestResolveOriginalProject:
 
 
 class TestHeadlessFinalize:
-    def test_run_headless_accepts_tool_exec(self) -> None:
-        """Verify _run_headless has tool_exec in its signature."""
+    def test_run_headless_accepts_engine(self) -> None:
+        """Verify _run_headless has engine in its signature."""
         import inspect
         from factory.cli._ceo_helpers import _run_headless
 
         sig = inspect.signature(_run_headless)
-        assert "tool_exec" in sig.parameters
-        assert sig.parameters["tool_exec"].default is False
+        assert "engine" in sig.parameters
+        assert sig.parameters["engine"].default == "skill"
 
 
 class TestWorkflowDiskCache:

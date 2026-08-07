@@ -522,15 +522,21 @@ def _execute_ceo(
     else:
         ceo_mode = mode
 
-    tool_exec = getattr(args, "tool_exec", False)
-    if tool_exec:
+    engine = getattr(args, "engine", "skill")
+
+    if engine == "deterministic":
+        if not headless:
+            print("Error: --engine deterministic requires --headless", file=sys.stderr)
+            return 1
+
+    if engine == "tool":
         from factory.workflow.tool import tool_init as _tool_init
 
         try:
             _tool_init(ceo_mode, wt_path)
         except Exception as e:
             log.warning("tool_exec.init_failed", error=str(e), mode=ceo_mode)
-            tool_exec = False
+            engine = "skill"
 
     if clean_pr_flag is not None:
         clean_pr_resolved = clean_pr_flag
@@ -630,7 +636,7 @@ def _execute_ceo(
             no_worktree=no_worktree,
             ceo_mode=ceo_mode,
             verification_settings_file=_verification_settings_file,
-            tool_exec=tool_exec,
+            engine=engine,
         )
 
     try:
@@ -642,7 +648,7 @@ def _execute_ceo(
             mark_read(project_path, pending_ids)
         from factory.models import AgentRunRequest as _RunReq
 
-        if tool_exec:
+        if engine == "tool":
             base_prompt = resolve_prompt(
                 "ceo", wt_path, use_profile=use_profile, workflow_mode=None,
             )
@@ -669,7 +675,7 @@ def _execute_ceo(
             )
         )
     finally:
-        if tool_exec:
+        if engine == "tool":
             try:
                 from factory.workflow.tool import tool_finalize
                 finalize_result = tool_finalize(wt_path)
@@ -717,7 +723,7 @@ def _run_headless(
     no_worktree: bool,
     ceo_mode: str,
     verification_settings_file: str | None,
-    tool_exec: bool = False,
+    engine: str = "skill",
 ) -> int:
     """Run the CEO in headless mode with completion guard."""
     from factory.ceo_completion import run_ceo_with_completion_guard
@@ -764,7 +770,7 @@ def _run_headless(
             no_worktree=no_worktree,
         )
     finally:
-        if tool_exec:
+        if engine == "tool":
             try:
                 from factory.workflow.tool import tool_finalize
                 tool_finalize(wt_path)

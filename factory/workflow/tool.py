@@ -282,7 +282,8 @@ def tool_next(project_path: Path) -> str:
     state = _load_state(project_path)
 
     if state["status"] != "active":
-        return f"DONE\nWorkflow {state['workflow_name']} completed."
+        finalize_msg = tool_finalize(project_path)
+        return f"DONE\n{finalize_msg}"
 
     wf = _get_workflow_cached(state["workflow_name"], project_path)
     order = state["topo_order"]
@@ -335,9 +336,8 @@ def tool_next(project_path: Path) -> str:
     _save_state(project_path, state)
 
     if idx >= len(order):
-        state["status"] = "completed"
-        _save_state(project_path, state)
-        return "DONE\nAll nodes completed."
+        finalize_msg = tool_finalize(project_path)
+        return f"DONE\n{finalize_msg}"
 
     nid = order[idx]
     node = wf.nodes[nid]

@@ -527,6 +527,10 @@ def add_entry_point_parsers(sub: argparse._SubParsersAction) -> None:  # type: i
     p.add_argument("--no-worktree", action="store_true", default=False, dest="no_worktree",
                     help="Run directly in the project directory without creating a worktree "
                          "(useful for testing in-flight branch changes)")
+    p.add_argument("--engine", choices=["skill", "tool", "deterministic"], default="skill",
+                    help="Execution engine: skill (CEO follows SKILL.md, default), "
+                         "tool (CEO drives via factory workflow tool commands), "
+                         "deterministic (headless WorkflowExecutor, no CEO)")
     p.add_argument("--overwrite", default=None, metavar="TEXT",
                     help="Natural-language directive to mutate the workflow for this session")
     p.add_argument("--auto-approve", action="store_true", default=False,
@@ -587,6 +591,10 @@ def add_entry_point_parsers(sub: argparse._SubParsersAction) -> None:  # type: i
                     help="Run agent interactively in a tmux window instead of headless (claude only)")
     p.add_argument("--use-profile", action="store_true", default=False,
                     help="Inject user profile (~/.factory/profile.md) into agent prompts")
+    p.add_argument("--engine", choices=["skill", "tool", "deterministic"], default="skill",
+                    help="Execution engine: skill (CEO follows SKILL.md, default), "
+                         "tool (CEO drives via factory workflow tool commands), "
+                         "deterministic (headless WorkflowExecutor, no CEO)")
     p.add_argument("--overwrite", default=None, metavar="TEXT",
                     help="Natural-language directive to mutate the workflow for this session")
 
