@@ -263,7 +263,8 @@ def _cmd_tool(args: argparse.Namespace) -> int:
         print(session_dir)
         return 0
     elif sub == "next":
-        print(tool_next(project_path))
+        fmt = getattr(args, "format", "linear")
+        print(tool_next(project_path, fmt=fmt))
         return 0
     elif sub == "submit":
         output = sys.stdin.read().strip()
@@ -271,7 +272,8 @@ def _cmd_tool(args: argparse.Namespace) -> int:
         print(result)
         return 0
     elif sub == "status":
-        print(tool_status(project_path))
+        fmt = getattr(args, "format", "linear")
+        print(tool_status(project_path, fmt=fmt))
         return 0
     elif sub == "finalize":
         print(tool_finalize(project_path))
@@ -329,6 +331,10 @@ def add_workflow_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]
 
     p_tool_next = tool_sub.add_parser("next", help="Get next node task")
     p_tool_next.add_argument("project_path", help="Project path")
+    p_tool_next.add_argument(
+        "--format", choices=["linear", "phased"], default="linear",
+        help="Output format (default: linear)",
+    )
 
     p_tool_submit = tool_sub.add_parser("submit", help="Submit node output")
     p_tool_submit.add_argument("project_path", help="Project path")
@@ -336,6 +342,10 @@ def add_workflow_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]
 
     p_tool_status = tool_sub.add_parser("status", help="Show session status")
     p_tool_status.add_argument("project_path", help="Project path")
+    p_tool_status.add_argument(
+        "--format", choices=["linear", "phased"], default="linear",
+        help="Output format (default: linear)",
+    )
 
     p_tool_finalize = tool_sub.add_parser("finalize", help="Finalize session — mark remaining nodes complete")
     p_tool_finalize.add_argument("project_path", help="Project path")

@@ -22,7 +22,9 @@ from factory.workflow.tool import (
     _find_reloop_target,
     _format_gate_task,
     _format_node_task,
+    _format_progress,
     _get_workflow_cached,
+    _phase_label,
     _rebuild_workflow,
     _resolve_original_project,
     _workflow_cache,
@@ -186,7 +188,7 @@ class TestToolNext:
 
         result = tool_next(tmp_path)
 
-        assert "Node: study" in result
+        assert "▶ study" in result
         assert "Type: Study" in result
 
     def test_next_returns_done_when_completed(self, tmp_path: Path) -> None:
@@ -204,7 +206,7 @@ class TestToolNext:
         )
 
         result = tool_next(tmp_path)
-        assert result.startswith("DONE")
+        assert "DONE" in result
 
     def test_next_completes_when_past_end(self, tmp_path: Path) -> None:
         wf = _simple_workflow()
@@ -425,7 +427,7 @@ class TestToolSubmit:
         assert result == "CONTINUE"
 
         next_result = tool_next(tmp_path)
-        assert next_result.startswith("APPROVAL_NEEDED")
+        assert "APPROVAL_NEEDED" in next_result
         assert "Approve this strategy?" in next_result
 
     def test_submit_returns_done_at_end(self, tmp_path: Path) -> None:
@@ -470,8 +472,7 @@ class TestToolStatus:
 
         result = tool_status(tmp_path)
         assert "Progress: 1/" in result
-        assert "[study]" in result
-        assert "Completed nodes:" in result
+        assert "✓ study" in result
 
     def test_status_with_gate_results(self, tmp_path: Path) -> None:
         wf = _fn_gate_workflow()
@@ -560,7 +561,7 @@ class TestAutoSubmit:
         )
         assert "study" in state["completed"]
         assert "researcher" in state["completed"]
-        assert result.startswith("GATE")
+        assert "GATE" in result
         assert "gate_research" in result
 
     def test_next_auto_evaluates_fn_gate(self, tmp_path: Path) -> None:
@@ -1028,7 +1029,7 @@ class TestWorkflowDiskCache:
         WorkflowRegistry.reset()
 
         result = tool_next(tmp_path)
-        assert "Node: study" in result
+        assert "▶ study" in result
 
     def test_rebuild_workflow_roundtrip(self, tmp_path: Path) -> None:
         """Serialized cache can be deserialized back into a valid Workflow."""
@@ -1100,6 +1101,109 @@ class TestInvokeAgentPromptOverride:
             ))
 
             mock_resolve.assert_called_once()
+
+
+class TestFormatProgress:
+    def test_format_progress_linear(self, tmp_path: Path) -> None:
+        """Linear format shows ✓/▶/○ markers and expands current node."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        state = json.loads(
+            (tmp_path / ".factory" / "tool_session" / "state.json").read_text()
+        )
+        state["completed"]["study"] = "done"
+        state["completed"]["researcher"] = "done"
+
+        result = _format_progress(state, wf, tmp_path, "gate_research", fmt="linear")
+
+        assert "✓ study" in result
+        assert "✓ researcher" in result
+        assert "▶ gate_research" in result
+        assert "← CURRENT" in result
+        assert "○ builder" in result
+        assert "Type: Gate" in result
+
+    def test_format_progress_phased(self, tmp_path: Path) -> None:
+        """Phased format shows 'Phase N:' labels with role/gate names."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        state = json.loads(
+            (tmp_path / ".factory" / "tool_session" / "state.json").read_text()
+        )
+        state["completed"]["study"] = "done"
+        state["completed"]["researcher"] = "done"
+
+        result = _format_progress(state, wf, tmp_path, "gate_research", fmt="phased")
+
+        assert "Phase 1:" in result
+        assert "Phase 2:" in result
+        assert "Phase 3:" in result
+        assert "Gate —" in result
+        assert "Observe" in result or "Researcher" in result
+
+    def test_next_linear_format(self, tmp_path: Path) -> None:
+        """tool_next with fmt='linear' includes ✓/▶/○ markers."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        # Complete study via artifact
+        strategy_dir = tmp_path / ".factory" / "strategy"
+        strategy_dir.mkdir(parents=True, exist_ok=True)
+        (strategy_dir / "observations.md").write_text(
+            "Detailed observations about the project that exceed the minimum length threshold"
+        )
+
+        result = tool_next(tmp_path, fmt="linear")
+
+        assert "✓ study" in result
+        assert "▶ researcher" in result
+        assert "○" in result
+
+    def test_next_phased_format(self, tmp_path: Path) -> None:
+        """tool_next with fmt='phased' includes 'Phase' labels."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        result = tool_next(tmp_path, fmt="phased")
+
+        assert "Phase 1:" in result
+        assert "Phase" in result
+
+    def test_phase_label(self) -> None:
+        """_phase_label produces correct labels for each node type."""
+        agent = AgentNode(id="builder", role=AgentRole.BUILDER, prompt_template="build")
+        assert "Builder" in _phase_label("builder", agent)
+
+        gate = GateNode(id="gate_research", evaluator_type="agent", gate_prompt="review")
+        label = _phase_label("gate_research", gate)
+        assert "Gate —" in label
+        assert "Research" in label
+
+        study = Study(id="study", command="factory study")
+        label = _phase_label("study", study)
+        assert "Observe" in label
+        assert "study" in label
+
+        fn = FnNode(id="apply_spec", command="echo ok")
+        label = _phase_label("apply_spec", fn)
+        assert "Apply Spec" in label
+
+        from factory.workflow.primitives import ForkNode
+        fork = ForkNode(id="fork1", targets=["a", "b"])
+        label = _phase_label("fork1", fork)
+        assert "Fork" in label
+        assert "a" in label
+        assert "b" in label
 
 
 class TestDeterministicImpliesHeadless:

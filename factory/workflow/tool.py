@@ -267,7 +267,7 @@ def tool_init(workflow_name: str, project_path: Path) -> str:
     return str(session_dir)
 
 
-def tool_next(project_path: Path) -> str:
+def tool_next(project_path: Path, fmt: str = "linear") -> str:
     """Get the next node to execute.
 
     Auto-submits any pending node whose artifacts exist:
@@ -282,8 +282,9 @@ def tool_next(project_path: Path) -> str:
     state = _load_state(project_path)
 
     if state["status"] != "active":
+        progress = _format_progress(state, None, project_path, None, fmt=fmt)
         finalize_msg = tool_finalize(project_path)
-        return f"DONE\n{finalize_msg}"
+        return f"{progress}\n\nDONE\n{finalize_msg}"
 
     wf = _get_workflow_cached(state["workflow_name"], project_path)
     order = state["topo_order"]
@@ -336,21 +337,25 @@ def tool_next(project_path: Path) -> str:
     _save_state(project_path, state)
 
     if idx >= len(order):
+        progress = _format_progress(state, wf, project_path, None, fmt=fmt)
         finalize_msg = tool_finalize(project_path)
-        return f"DONE\n{finalize_msg}"
+        return f"{progress}\n\nDONE\n{finalize_msg}"
 
     nid = order[idx]
     node = wf.nodes[nid]
 
     _emit_event(project_path, "workflow.tool.next", node=nid, node_type=type(node).__name__)
 
+    progress = _format_progress(state, wf, project_path, nid, fmt=fmt)
+
     if isinstance(node, GateNode) and node.evaluator_type == "agent":
-        return f"GATE\n{_format_gate_task(nid, node, state, project_path)}"
+        gate_task = _format_gate_task(nid, node, state, project_path)
+        return f"{progress}\n\nGATE\n{gate_task}"
 
     if isinstance(node, GateNode) and node.evaluator_type == "user":
-        return f"APPROVAL_NEEDED\n{node.gate_prompt}"
+        return f"{progress}\n\nAPPROVAL_NEEDED\n{node.gate_prompt}"
 
-    return _format_node_task(nid, node, wf, state, project_path)
+    return progress
 
 
 def tool_submit(project_path: Path, node_id: str, output: str) -> str:
@@ -398,7 +403,7 @@ def tool_submit(project_path: Path, node_id: str, output: str) -> str:
     return "CONTINUE"
 
 
-def tool_status(project_path: Path) -> str:
+def tool_status(project_path: Path, fmt: str = "linear") -> str:
     """Get current session status."""
     state_path = project_path / ".factory" / "tool_session" / "state.json"
     if not state_path.exists():
@@ -411,6 +416,13 @@ def tool_status(project_path: Path) -> str:
     completed_count = len(state["completed"])
     total = len(order)
 
+    try:
+        wf = _get_workflow_cached(state["workflow_name"], project_path)
+    except Exception:
+        wf = None
+
+    current_nid = current if current != "DONE" else None
+
     lines = [
         f"Workflow: {state['workflow_name']}",
         f"Session:  {state['session_id']}",
@@ -422,13 +434,8 @@ def tool_status(project_path: Path) -> str:
     if state["gate_results"]:
         lines.append(f"Gates:    {json.dumps(state['gate_results'])}")
 
-    if state["completed"]:
-        lines.append("")
-        lines.append("Completed nodes:")
-        for nid in order:
-            if nid in state["completed"]:
-                preview = state["completed"][nid][:80].replace("\n", " ")
-                lines.append(f"  [{nid}] {preview}")
+    lines.append("")
+    lines.append(_format_progress(state, wf, project_path, current_nid, fmt=fmt))
 
     return "\n".join(lines)
 
@@ -471,6 +478,70 @@ def tool_finalize(project_path: Path) -> str:
 
 
 # ── helpers ─────────────────────────────────────────────────────
+
+
+def _phase_label(nid: str, node: object) -> str:
+    """Generate a human-readable phase label from node id and type."""
+    name = nid.replace("_", " ").title()
+
+    if isinstance(node, AgentNode):
+        role = node.role.value.replace("_", " ").title()
+        return role if role.lower() in name.lower() else f"{role} — {name}"
+    elif isinstance(node, GateNode):
+        gate_name = nid.replace("gate_", "").replace("_", " ").title()
+        return f"Gate — {gate_name}"
+    elif isinstance(node, Study):
+        return f"Observe ({nid})"
+    elif isinstance(node, ForkNode):
+        return f"Fork ({', '.join(node.targets)})"
+    elif isinstance(node, FnNode):
+        return name
+    return name
+
+
+def _format_progress(
+    state: dict,
+    wf: Workflow | None,
+    project_path: Path,
+    current_nid: str | None,
+    fmt: str = "linear",
+) -> str:
+    """Build a progress view of the workflow with completion markers."""
+    order = state["topo_order"]
+    completed = state["completed"]
+    lines: list[str] = []
+
+    for i, nid in enumerate(order):
+        node = wf.nodes.get(nid) if wf else None
+        is_current = nid == current_nid
+        is_done = nid in completed
+
+        if is_done:
+            marker = "✓"
+        elif is_current:
+            marker = "▶"
+        else:
+            marker = "○"
+
+        if fmt == "phased":
+            label = _phase_label(nid, node) if node else nid.replace("_", " ").title()
+            line = f"{marker} Phase {i + 1}: {label}"
+        else:
+            line = f"{marker} {nid}"
+
+        if is_current:
+            line += "    ← CURRENT"
+
+        lines.append(line)
+
+        if is_current and node is not None and wf is not None:
+            details = _format_node_task(nid, node, wf, state, project_path)
+            for detail_line in details.split("\n"):
+                if detail_line.startswith("Node:"):
+                    continue
+                lines.append(f"  {detail_line}")
+
+    return "\n".join(lines)
 
 
 def _format_node_task(
