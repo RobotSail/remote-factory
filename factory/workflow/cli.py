@@ -249,11 +249,19 @@ def _cmd_tool(args: argparse.Namespace) -> int:
     """Dispatch tool subcommands for step-by-step workflow execution."""
     import sys
 
-    from factory.workflow.tool import tool_finalize, tool_init, tool_next, tool_status, tool_submit
+    from factory.workflow.tool import (
+        tool_curr,
+        tool_finalize,
+        tool_init,
+        tool_next,
+        tool_overview,
+        tool_status,
+        tool_submit,
+    )
 
     sub = getattr(args, "tool_command", None)
     if not sub:
-        print("Usage: factory workflow tool {init,next,submit,status,finalize}")
+        print("Usage: factory workflow tool {init,next,submit,status,finalize,overview,curr}")
         return 1
 
     project_path = Path(args.project_path).resolve()
@@ -263,8 +271,8 @@ def _cmd_tool(args: argparse.Namespace) -> int:
         print(session_dir)
         return 0
     elif sub == "next":
-        fmt = getattr(args, "format", "linear")
-        print(tool_next(project_path, fmt=fmt))
+        dry_run = getattr(args, "dry_run", False)
+        print(tool_next(project_path, dry_run=dry_run))
         return 0
     elif sub == "submit":
         output = sys.stdin.read().strip()
@@ -277,6 +285,13 @@ def _cmd_tool(args: argparse.Namespace) -> int:
         return 0
     elif sub == "finalize":
         print(tool_finalize(project_path))
+        return 0
+    elif sub == "overview":
+        fmt = getattr(args, "format", "linear")
+        print(tool_overview(project_path, fmt=fmt))
+        return 0
+    elif sub == "curr":
+        print(tool_curr(project_path))
         return 0
 
     return 1
@@ -332,8 +347,8 @@ def add_workflow_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]
     p_tool_next = tool_sub.add_parser("next", help="Get next node task")
     p_tool_next.add_argument("project_path", help="Project path")
     p_tool_next.add_argument(
-        "--format", choices=["linear", "phased"], default="linear",
-        help="Output format (default: linear)",
+        "--dry-run", action="store_true", default=False,
+        help="Preview without advancing",
     )
 
     p_tool_submit = tool_sub.add_parser("submit", help="Submit node output")
@@ -349,3 +364,13 @@ def add_workflow_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]
 
     p_tool_finalize = tool_sub.add_parser("finalize", help="Finalize session — mark remaining nodes complete")
     p_tool_finalize.add_argument("project_path", help="Project path")
+
+    p_tool_overview = tool_sub.add_parser("overview", help="Show full workflow map")
+    p_tool_overview.add_argument("project_path", help="Project path")
+    p_tool_overview.add_argument(
+        "--format", choices=["linear", "phased"], default="linear",
+        help="Output format (default: linear)",
+    )
+
+    p_tool_curr = tool_sub.add_parser("curr", help="Show current node (no advance)")
+    p_tool_curr.add_argument("project_path", help="Project path")

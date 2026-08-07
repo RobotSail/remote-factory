@@ -52,7 +52,15 @@ log = structlog.get_logger()
 def _tool_exec_protocol(wt_path: Path) -> str:
     """Return the tool-exec protocol section appended to the CEO prompt."""
     p = wt_path
-    return (
+
+    overview = ""
+    try:
+        from factory.workflow.tool import tool_overview
+        overview = tool_overview(p, fmt="linear")
+    except Exception:
+        pass
+
+    protocol = (
         "\n\n# Tool-Based Execution Protocol\n"
         "\n"
         "You are executing the workflow using factory tool commands instead of "
@@ -65,6 +73,8 @@ def _tool_exec_protocol(wt_path: Path) -> str:
         "  <your output>\n"
         "  TOOL_OUTPUT\n"
         f"  factory workflow tool status {p}\n"
+        f"  factory workflow tool overview {p}\n"
+        f"  factory workflow tool curr {p}\n"
         "\n"
         "## Protocol\n"
         "\n"
@@ -92,6 +102,15 @@ def _tool_exec_protocol(wt_path: Path) -> str:
         "do not write code\n"
         '- Start by running "next" to get your first task\n'
     )
+
+    if overview:
+        protocol += (
+            "\n## Workflow Map\n"
+            "\n"
+            f"{overview}\n"
+        )
+
+    return protocol
 
 
 # ── flag validation ───────────────────────────────────────────
