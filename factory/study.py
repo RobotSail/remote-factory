@@ -1223,6 +1223,12 @@ def study_project_local(
     lines.extend(_build_self_improvement_section(project_path))
     lines.extend(_build_hypothesis_budget_section(project_path, focus, backlog_items))
 
+    from factory.mempalace.reader import mp_read as _mp_read
+
+    mp_context = _mp_read(project_path, task_hint=focus)
+    if mp_context:
+        lines.extend(["", "## Memory Context (MemPalace)", "", mp_context])
+
     return "\n".join(lines)
 
 

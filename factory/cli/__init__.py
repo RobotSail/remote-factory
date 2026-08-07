@@ -38,6 +38,7 @@ from factory.cli._tmux_commands import (
     cmd_tmux_ls as cmd_tmux_ls,
     cmd_tmux_stop as cmd_tmux_stop,
 )
+from factory.cli.mempalace import cmd_mempalace as cmd_mempalace
 from factory.cli.ceo import (
     cmd_ceo as cmd_ceo,
     cmd_refactory as cmd_refactory,
