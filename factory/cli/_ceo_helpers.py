@@ -53,18 +53,10 @@ def _tool_exec_protocol(wt_path: Path) -> str:
     """Return the tool-exec protocol section appended to the CEO prompt."""
     p = wt_path
     return (
-        "\n\n# OVERRIDE: Tool-Based Execution Mode\n"
+        "\n\n# Tool-Based Execution Protocol\n"
         "\n"
-        "**THIS OVERRIDES ALL OTHER WORKFLOW INSTRUCTIONS IN THIS PROMPT.**\n"
-        "\n"
-        "You are in tool-based execution mode. The workflow is managed by the factory tool.\n"
-        "DO NOT:\n"
-        "- Read or follow any SKILL.md files\n"
-        '- Use the "Route to Mode via Skills" section from ceo.md\n'
-        "- Run factory detect or factory study on your own\n"
-        "- Follow the workflow phases described in ceo.md\n"
-        "\n"
-        "INSTEAD, use ONLY these commands to drive the workflow:\n"
+        "You are executing the workflow using factory tool commands instead of "
+        "following a SKILL.md playbook.\n"
         "\n"
         "## Commands\n"
         "\n"
@@ -74,33 +66,31 @@ def _tool_exec_protocol(wt_path: Path) -> str:
         "  TOOL_OUTPUT\n"
         f"  factory workflow tool status {p}\n"
         "\n"
-        "## Execution Loop\n"
+        "## Protocol\n"
         "\n"
-        "Repeat this cycle for EVERY node in the workflow:\n"
+        '1. Run "next" to see your current task — it tells you the node type, '
+        "role, and what to do\n"
+        "2. Execute the task:\n"
+        "   - Agent nodes: run factory agent <role> --task \"...\" --project <path>\n"
+        "   - Study nodes: run the study command shown\n"
+        "   - Function nodes: run the command shown\n"
+        '3. Run "next" again — the tool auto-detects that the previous node completed\n'
+        "   (by checking for output files) and advances to the next task\n"
+        "4. Repeat until GATE or DONE\n"
+        "5. For GATE nodes: the tool asks you to evaluate — read the artifacts, then\n"
+        '   call "submit" with your verdict (PROCEED, RETRY, or HALT)\n'
+        "6. If RETRY: the tool rewinds — run \"next\" to get the retry task\n"
+        "7. If DONE: report completion\n"
         "\n"
-        '1. Call "factory workflow tool next" to get your current task\n'
-        "2. The tool tells you exactly what to do: spawn an agent, run a command, "
-        "or evaluate a gate\n"
-        "3. Execute the task as instructed\n"
-        '4. Call "factory workflow tool next" again — the tool auto-detects completion\n'
-        "   and advances to the next node\n"
-        '5. If the tool returns GATE: read the artifacts, then call "submit" with '
-        "your verdict\n"
-        "6. If the tool returns DONE: the workflow is complete, report it\n"
+        "## Important\n"
         "\n"
-        'You MUST call "next" after EVERY agent invocation. The tool tracks progress\n'
-        "through the artifact files that agents create. If you stop calling \"next\",\n"
-        "the workflow stalls.\n"
-        "\n"
-        "## Critical Rules\n"
-        "\n"
-        '- Call "next" to START. Call "next" after EVERY step. Never stop calling "next".\n'
-        "- The tool manages the workflow order — you do NOT choose what to do next\n"
-        "- Gates with evaluator commands auto-evaluate — you only handle agent-type gates\n"
-        "- All Sacred Rules still apply (delegate to agents, review output, etc.)\n"
-        "- The full workflow has ~19 nodes. Keep calling \"next\" until you get DONE.\n"
-        "\n"
-        f'START NOW: Run "factory workflow tool next {p}"\n'
+        "- For most nodes, just run the command and call \"next\" — the tool handles tracking\n"
+        '- Only call "submit" for gate verdicts (PROCEED/RETRY/HALT)\n'
+        "- The tool auto-detects agent completion via .factory/reviews/ files\n"
+        "- The tool auto-evaluates fn gates (precheck, guard) on your behalf\n"
+        "- All Sacred Rules still apply — delegate to agents, review output, "
+        "do not write code\n"
+        '- Start by running "next" to get your first task\n'
     )
 
 
@@ -663,15 +653,6 @@ def _execute_ceo(
                 "ceo", wt_path, use_profile=use_profile, workflow_mode=None,
             )
             prompt = base_prompt + _tool_exec_protocol(wt_path)
-            task = (
-                f"You are in tool-based execution mode. Execute the workflow by calling "
-                f"factory workflow tool next {wt_path} repeatedly.\n\n"
-                f"Start now: run factory workflow tool next {wt_path}\n"
-                f"Then execute whatever it tells you, then call next again.\n"
-                f"Repeat until the tool says DONE.\n\n"
-                f"DO NOT read SKILL.md files. DO NOT follow ceo.md workflow routing. "
-                f"The tool manages everything."
-            )
         else:
             prompt = resolve_prompt(
                 "ceo", wt_path, use_profile=use_profile, workflow_mode=ceo_mode,
