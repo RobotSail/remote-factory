@@ -30,6 +30,22 @@ log = structlog.get_logger()
 _workflow_cache: dict[str, Workflow] = {}
 
 
+def _resolve_original_project(wt_path: Path) -> Path:
+    """Resolve the original project path from a worktree path.
+
+    Worktree paths look like: /project/.factory-worktrees/run-xxx
+    or: /project/.factory/worktrees/run-xxx
+    Falls back to wt_path itself if not a worktree.
+    """
+    parts = wt_path.parts
+    for i, part in enumerate(parts):
+        if part == ".factory-worktrees":
+            return Path(*parts[:i])
+        if part == ".factory" and i + 1 < len(parts) and parts[i + 1] == "worktrees":
+            return Path(*parts[:i])
+    return wt_path
+
+
 def _load_state(project_path: Path) -> dict:
     state_path = project_path / ".factory" / "tool_session" / "state.json"
     return json.loads(state_path.read_text())
@@ -41,16 +57,106 @@ def _save_state(project_path: Path, state: dict) -> None:
 
 
 def _emit_event(project_path: Path, event_type: str, **data: object) -> None:
-    """Append a structured event to .factory/events.jsonl."""
+    """Append a structured event to .factory/events.jsonl.
+
+    Resolves the original project path so events survive worktree deletion.
+    """
+    try:
+        state_path = project_path / ".factory" / "tool_session" / "state.json"
+        if state_path.exists():
+            state = json.loads(state_path.read_text())
+            orig = state.get("original_project")
+            if orig:
+                target = Path(orig)
+            else:
+                target = _resolve_original_project(project_path)
+        else:
+            target = _resolve_original_project(project_path)
+    except Exception:
+        target = project_path
+
     event = {
         "type": event_type,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         **data,
     }
-    events_file = project_path / ".factory" / "events.jsonl"
+    events_file = target / ".factory" / "events.jsonl"
     events_file.parent.mkdir(parents=True, exist_ok=True)
     with open(events_file, "a") as f:
         f.write(json.dumps(event) + "\n")
+
+
+def _rebuild_workflow(cache_data: dict) -> Workflow:
+    """Rebuild a Workflow from cached JSON data."""
+    from factory.workflow.primitives import AgentRole, Edge, VerdictType
+
+    from factory.workflow.primitives import NodeType
+    nodes: dict[str, NodeType] = {}
+    for nid, info in cache_data["nodes"].items():
+        ntype = info["type"]
+        common: dict[str, object] = {
+            "id": nid,
+            "reads": set(info.get("reads", [])),
+            "writes": set(info.get("writes", [])),
+            "blocking": info.get("blocking", True),
+        }
+
+        if ntype == "AgentNode":
+            nodes[nid] = AgentNode(
+                **common,  # type: ignore[arg-type]
+                role=AgentRole(info["role"]),
+                model=info.get("model", ""),
+                prompt_template=info.get("prompt_template", ""),
+                timeout=info.get("timeout"),
+                max_iterations=info.get("max_iterations", 1),
+            )
+        elif ntype == "GateNode":
+            nodes[nid] = GateNode(
+                **common,  # type: ignore[arg-type]
+                evaluator_type=info.get("evaluator_type", "agent"),
+                evaluator_command=info.get("evaluator_command"),
+                gate_prompt=info.get("gate_prompt", ""),
+                evaluator_role=AgentRole(info["evaluator_role"]) if info.get("evaluator_role") else None,
+            )
+        elif ntype == "Study":
+            nodes[nid] = Study(
+                **common,  # type: ignore[arg-type]
+                command=info.get("command", ""),
+                focus=info.get("focus"),
+            )
+        elif ntype == "FnNode":
+            nodes[nid] = FnNode(
+                **common,  # type: ignore[arg-type]
+                command=info.get("command", ""),
+                notes=info.get("notes", ""),
+            )
+        elif ntype == "ForkNode":
+            nodes[nid] = ForkNode(
+                **common,  # type: ignore[arg-type]
+                targets=info.get("targets", []),
+            )
+        elif ntype == "JoinNode":
+            nodes[nid] = JoinNode(
+                **common,  # type: ignore[arg-type]
+                sources=info.get("sources", []),
+            )
+        else:
+            nodes[nid] = FnNode(**common, command="", notes="")  # type: ignore[arg-type]
+
+    edges = []
+    for e in cache_data.get("edges", []):
+        edges.append(Edge(
+            source=e["source"],
+            target=e["target"],
+            condition=VerdictType(e["condition"]) if e.get("condition") else None,
+        ))
+
+    return Workflow(
+        name=cache_data["name"],
+        nodes=nodes,
+        edges=edges,
+        start_node=cache_data["start_node"],
+    )
 
 
 def _get_workflow_cached(name: str, project_path: Path) -> Workflow:
@@ -58,16 +164,27 @@ def _get_workflow_cached(name: str, project_path: Path) -> Workflow:
     if cache_key in _workflow_cache:
         return _workflow_cache[cache_key]
 
+    cache_file = project_path / ".factory" / "tool_session" / "workflow_cache.json"
+    if cache_file.exists():
+        try:
+            cache_data = json.loads(cache_file.read_text())
+            if cache_data.get("name") == name:
+                wf = _rebuild_workflow(cache_data)
+                _workflow_cache[cache_key] = wf
+                return wf
+        except Exception:
+            pass
+
     from factory.workflow.definitions import register_all
 
     all_wf = register_all()
-    wf = all_wf.get(name)
-    if not wf:
-        wf = WorkflowRegistry.get_workflow(name, project_path)
-    if not wf:
+    found: Workflow | None = all_wf.get(name)
+    if not found:
+        found = WorkflowRegistry.get_workflow(name, project_path)
+    if not found:
         raise ValueError(f"Workflow not found: {name}")
-    _workflow_cache[cache_key] = wf
-    return wf
+    _workflow_cache[cache_key] = found
+    return found
 
 
 def tool_init(workflow_name: str, project_path: Path) -> str:
@@ -86,6 +203,7 @@ def tool_init(workflow_name: str, project_path: Path) -> str:
     state = {
         "workflow_name": workflow_name,
         "session_id": uuid.uuid4().hex[:12],
+        "original_project": str(_resolve_original_project(project_path)),
         "topo_order": order,
         "pointer_idx": 0,
         "completed": {},
@@ -95,6 +213,53 @@ def tool_init(workflow_name: str, project_path: Path) -> str:
     }
 
     (session_dir / "state.json").write_text(json.dumps(state, indent=2))
+
+    cache_data: dict[str, object] = {
+        "name": wf.name,
+        "start_node": wf.start_node,
+        "nodes": {},
+        "edges": [
+            {
+                "source": e.source,
+                "target": e.target,
+                "condition": e.condition.value if e.condition else None,
+            }
+            for e in wf.edges
+        ],
+    }
+    nodes_cache: dict[str, dict[str, object]] = {}
+    for nid, node in wf.nodes.items():
+        node_info: dict[str, object] = {
+            "type": type(node).__name__,
+            "id": nid,
+            "blocking": node.blocking,
+            "reads": sorted(node.reads),
+            "writes": sorted(node.writes),
+        }
+        if isinstance(node, AgentNode):
+            node_info["role"] = node.role.value
+            node_info["model"] = node.model
+            node_info["prompt_template"] = node.prompt_template
+            node_info["timeout"] = node.timeout
+            node_info["max_iterations"] = node.max_iterations
+        elif isinstance(node, GateNode):
+            node_info["evaluator_type"] = node.evaluator_type
+            node_info["evaluator_command"] = node.evaluator_command
+            node_info["gate_prompt"] = node.gate_prompt
+            if node.evaluator_role:
+                node_info["evaluator_role"] = node.evaluator_role.value
+        elif isinstance(node, Study):
+            node_info["command"] = node.command
+            node_info["focus"] = node.focus
+        elif isinstance(node, FnNode):
+            node_info["command"] = node.command
+            node_info["notes"] = node.notes
+        elif isinstance(node, ForkNode):
+            node_info["targets"] = node.targets
+        nodes_cache[nid] = node_info
+    cache_data["nodes"] = nodes_cache
+    (session_dir / "workflow_cache.json").write_text(json.dumps(cache_data, indent=2))
+
     _emit_event(
         project_path, "workflow.tool.init",
         workflow=workflow_name, session_id=state["session_id"], nodes=len(order),

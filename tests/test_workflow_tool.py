@@ -23,6 +23,8 @@ from factory.workflow.tool import (
     _format_gate_task,
     _format_node_task,
     _get_workflow_cached,
+    _rebuild_workflow,
+    _resolve_original_project,
     _workflow_cache,
     tool_finalize,
     tool_init,
@@ -892,8 +894,8 @@ class TestWorkflowCache:
 
 
 class TestEventLogging:
-    def _read_events(self, tmp_path: Path) -> list[dict]:
-        events_file = tmp_path / ".factory" / "events.jsonl"
+    def _read_events(self, project_path: Path) -> list[dict]:
+        events_file = project_path / ".factory" / "events.jsonl"
         if not events_file.exists():
             return []
         return [json.loads(line) for line in events_file.read_text().strip().split("\n") if line]
@@ -942,3 +944,108 @@ class TestEventLogging:
         auto_events = [e for e in events if e["type"] == "workflow.tool.auto_submit"]
         assert len(auto_events) == 1
         assert auto_events[0]["node"] == "study"
+
+    def test_events_written_to_original_project(self, tmp_path: Path) -> None:
+        """Events should be written to the original project, not the worktree."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+
+        original = tmp_path / "my-project"
+        wt = original / ".factory-worktrees" / "run-abc123"
+        wt.mkdir(parents=True)
+        (wt / ".factory").mkdir()
+        (original / ".factory").mkdir(parents=True, exist_ok=True)
+
+        tool_init("test-simple", wt)
+
+        # Events should land in the original project, not the worktree
+        orig_events = original / ".factory" / "events.jsonl"
+        wt_events = wt / ".factory" / "events.jsonl"
+        assert orig_events.exists()
+        assert not wt_events.exists()
+
+        events = self._read_events(original)
+        init_events = [e for e in events if e["type"] == "workflow.tool.init"]
+        assert len(init_events) == 1
+
+
+class TestResolveOriginalProject:
+    def test_factory_worktrees_pattern(self) -> None:
+        p = Path("/home/user/project/.factory-worktrees/run-abc123")
+        assert _resolve_original_project(p) == Path("/home/user/project")
+
+    def test_factory_worktrees_nested(self) -> None:
+        p = Path("/home/user/project/.factory/worktrees/run-abc123")
+        assert _resolve_original_project(p) == Path("/home/user/project")
+
+    def test_no_worktree_passthrough(self) -> None:
+        p = Path("/home/user/project")
+        assert _resolve_original_project(p) == Path("/home/user/project")
+
+    def test_deep_factory_worktrees(self) -> None:
+        p = Path("/workspace/src/repo/.factory-worktrees/run-deadbeef")
+        assert _resolve_original_project(p) == Path("/workspace/src/repo")
+
+
+class TestHeadlessFinalize:
+    def test_run_headless_accepts_tool_exec(self) -> None:
+        """Verify _run_headless has tool_exec in its signature."""
+        import inspect
+        from factory.cli._ceo_helpers import _run_headless
+
+        sig = inspect.signature(_run_headless)
+        assert "tool_exec" in sig.parameters
+        assert sig.parameters["tool_exec"].default is False
+
+
+class TestWorkflowDiskCache:
+    def test_cache_persisted_on_init(self, tmp_path: Path) -> None:
+        """tool_init writes workflow_cache.json to session dir."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+
+        tool_init("test-simple", tmp_path)
+
+        cache_file = tmp_path / ".factory" / "tool_session" / "workflow_cache.json"
+        assert cache_file.exists()
+        cache = json.loads(cache_file.read_text())
+        assert cache["name"] == "test-simple"
+        assert "study" in cache["nodes"]
+        assert cache["nodes"]["study"]["type"] == "Study"
+
+    def test_cache_loaded_on_next(self, tmp_path: Path) -> None:
+        """After init, clearing in-memory cache still allows next to work via disk."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+
+        tool_init("test-simple", tmp_path)
+
+        # Clear the in-memory cache
+        _workflow_cache.clear()
+        # Also clear the registry so register_all won't find it
+        WorkflowRegistry.reset()
+
+        result = tool_next(tmp_path)
+        assert "Node: study" in result
+
+    def test_rebuild_workflow_roundtrip(self, tmp_path: Path) -> None:
+        """Serialized cache can be deserialized back into a valid Workflow."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+
+        tool_init("test-simple", tmp_path)
+
+        cache_file = tmp_path / ".factory" / "tool_session" / "workflow_cache.json"
+        cache_data = json.loads(cache_file.read_text())
+        rebuilt = _rebuild_workflow(cache_data)
+
+        assert rebuilt.name == wf.name
+        assert rebuilt.start_node == wf.start_node
+        assert set(rebuilt.nodes.keys()) == set(wf.nodes.keys())
+        assert len(rebuilt.edges) == len(wf.edges)
+        assert isinstance(rebuilt.nodes["study"], Study)
+        assert isinstance(rebuilt.nodes["researcher"], AgentNode)
+        assert isinstance(rebuilt.nodes["gate_research"], GateNode)

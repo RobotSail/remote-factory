@@ -630,6 +630,7 @@ def _execute_ceo(
             no_worktree=no_worktree,
             ceo_mode=ceo_mode,
             verification_settings_file=_verification_settings_file,
+            tool_exec=tool_exec,
         )
 
     try:
@@ -716,6 +717,7 @@ def _run_headless(
     no_worktree: bool,
     ceo_mode: str,
     verification_settings_file: str | None,
+    tool_exec: bool = False,
 ) -> int:
     """Run the CEO in headless mode with completion guard."""
     from factory.ceo_completion import run_ceo_with_completion_guard
@@ -762,6 +764,12 @@ def _run_headless(
             no_worktree=no_worktree,
         )
     finally:
+        if tool_exec:
+            try:
+                from factory.workflow.tool import tool_finalize
+                tool_finalize(wt_path)
+            except Exception:
+                pass
         _stop_ceo_tailer(ceo_tailer)
         complete_cycle_session(project_path, cycle_span_id)
         from factory.ceo_completion import print_resume_hint
