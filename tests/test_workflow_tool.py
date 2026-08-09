@@ -1378,6 +1378,70 @@ class TestNextDryRun:
         assert state["pointer_idx"] == 0
         assert "study" not in state["completed"]
 
+    def test_dry_run_no_events_emitted(self, tmp_path: Path) -> None:
+        """dry_run=True must not emit any events to events.jsonl."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        events_file = tmp_path / ".factory" / "events.jsonl"
+        events_before = events_file.read_text() if events_file.exists() else ""
+
+        tool_next(tmp_path, dry_run=True)
+
+        events_after = events_file.read_text() if events_file.exists() else ""
+        assert events_before == events_after, "dry_run should not emit events"
+
+    def test_dry_run_completed_status_no_finalize(self, tmp_path: Path) -> None:
+        """dry_run=True with status='completed' must not call finalize."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        state_path = tmp_path / ".factory" / "tool_session" / "state.json"
+        state = json.loads(state_path.read_text())
+        state["status"] = "completed"
+        state_path.write_text(json.dumps(state))
+
+        state_before = state_path.read_text()
+        events_file = tmp_path / ".factory" / "events.jsonl"
+        events_before = events_file.read_text() if events_file.exists() else ""
+
+        result = tool_next(tmp_path, dry_run=True)
+
+        assert "DONE" in result
+        assert state_path.read_text() == state_before, "dry_run should not mutate state"
+        events_after = events_file.read_text() if events_file.exists() else ""
+        assert events_before == events_after, "dry_run should not emit events"
+
+    def test_dry_run_pointer_past_end_no_finalize(self, tmp_path: Path) -> None:
+        """dry_run=True with pointer past end must not call finalize."""
+        wf = _simple_workflow()
+        _register_workflow(wf)
+        (tmp_path / ".factory").mkdir()
+        tool_init("test-simple", tmp_path)
+
+        state_path = tmp_path / ".factory" / "tool_session" / "state.json"
+        state = json.loads(state_path.read_text())
+        order = state["topo_order"]
+        state["pointer_idx"] = len(order)
+        for nid in order:
+            state["completed"][nid] = "done"
+        state_path.write_text(json.dumps(state))
+
+        state_before = state_path.read_text()
+        events_file = tmp_path / ".factory" / "events.jsonl"
+        events_before = events_file.read_text() if events_file.exists() else ""
+
+        result = tool_next(tmp_path, dry_run=True)
+
+        assert "DONE" in result
+        assert state_path.read_text() == state_before, "dry_run should not mutate state"
+        events_after = events_file.read_text() if events_file.exists() else ""
+        assert events_before == events_after, "dry_run should not emit events"
+
 
 class TestNextCompactOutput:
     def test_next_compact_output(self, tmp_path: Path) -> None:
