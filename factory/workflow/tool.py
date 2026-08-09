@@ -290,8 +290,10 @@ def tool_next(project_path: Path, dry_run: bool = False) -> str:
         state = copy.deepcopy(state)
 
     if state["status"] != "active":
-        finalize_msg = tool_finalize(project_path)
-        return f"DONE\n{finalize_msg}"
+        if not dry_run:
+            finalize_msg = tool_finalize(project_path)
+            return f"DONE\n{finalize_msg}"
+        return "DONE"
 
     wf = _get_workflow_cached(state["workflow_name"], project_path)
     order = state["topo_order"]
@@ -349,8 +351,10 @@ def tool_next(project_path: Path, dry_run: bool = False) -> str:
         _save_state(project_path, state)
 
     if idx >= len(order):
-        finalize_msg = tool_finalize(project_path)
-        return f"DONE\n{finalize_msg}"
+        if not dry_run:
+            finalize_msg = tool_finalize(project_path)
+            return f"DONE\n{finalize_msg}"
+        return "DONE"
 
     nid = order[idx]
     node = wf.nodes[nid]
