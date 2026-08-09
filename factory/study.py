@@ -965,7 +965,7 @@ def _build_spec_section(project_path: Path) -> list[str]:
             if spec_lines:
                 lines.append("")
                 lines.append("**Spec summary:**")
-                for sl in spec_lines[:5]:
+                for sl in spec_lines:
                     lines.append(f"  {sl}")
         except OSError:
             pass
