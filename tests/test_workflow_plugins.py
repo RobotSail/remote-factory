@@ -4,7 +4,6 @@ capability enforcement, entry-point discovery, safety ceilings, CLI, and backwar
 from __future__ import annotations
 
 import argparse
-import asyncio
 import warnings
 from pathlib import Path
 from types import SimpleNamespace
@@ -371,7 +370,7 @@ class TestPriorityOrdering:
 
 
 class TestGlobalReloopCeiling:
-    def test_global_reloop_ceiling_enforced(self) -> None:
+    async def test_global_reloop_ceiling_enforced(self) -> None:
         gate = GateNode(
             id="gate",
             evaluator_type="fn",
@@ -389,17 +388,9 @@ class TestGlobalReloopCeiling:
         )
 
         executor = WorkflowExecutor(wf, Path("/tmp"), dry_run=True)
-        # Simulate exceeding the global reloop ceiling
-        executor._global_reloop_count = MAX_GLOBAL_RELOOPS + 1
-
-        async def _test() -> None:
-            # Manually call gate execution logic
-            executor._global_reloop_count = MAX_GLOBAL_RELOOPS
-            # One more reloop should trigger ceiling
-            executor._global_reloop_count += 1
-            assert executor._global_reloop_count > MAX_GLOBAL_RELOOPS
-
-        asyncio.get_event_loop().run_until_complete(_test())
+        executor._global_reloop_count = MAX_GLOBAL_RELOOPS
+        executor._global_reloop_count += 1
+        assert executor._global_reloop_count > MAX_GLOBAL_RELOOPS
 
     def test_max_global_reloops_value(self) -> None:
         assert MAX_GLOBAL_RELOOPS == 20
@@ -412,7 +403,7 @@ class TestNodeTimeoutCeiling:
     def test_max_node_timeout_value(self) -> None:
         assert MAX_NODE_TIMEOUT == 3600
 
-    def test_timeout_capping_in_executor(self) -> None:
+    async def test_timeout_capping_in_executor(self) -> None:
         agent = AgentNode(
             id="slow",
             role=AgentRole.BUILDER,
@@ -426,7 +417,7 @@ class TestNodeTimeoutCeiling:
         )
         executor = WorkflowExecutor(wf, Path("/tmp"), dry_run=True)
 
-        result = asyncio.get_event_loop().run_until_complete(executor.execute())
+        result = await executor.execute()
         assert result.success
 
 
