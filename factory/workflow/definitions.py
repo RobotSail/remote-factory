@@ -706,6 +706,8 @@ def design_workflow(just_plan: bool = False) -> Workflow:
         wf.trigger = plan_trigger
         return wf
 
+    wf.terminal = True
+
     def trigger(state: ProjectState, ctx: dict[str, Any]) -> bool:
         return state in {ProjectState.NO_REPO, ProjectState.REPO_INCOMPLETE, ProjectState.HAS_FACTORY} and ctx.get(
             "interactive", False

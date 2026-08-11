@@ -662,8 +662,8 @@ class TestTerminalFlagDefaults:
     def test_meta_not_terminal(self) -> None:
         assert meta_workflow().terminal is False
 
-    def test_design_not_terminal(self) -> None:
-        assert design_workflow().terminal is False
+    def test_design_is_terminal(self) -> None:
+        assert design_workflow().terminal is True
 
 
 # ── W₁₆: Founder structure ──────────────────────────────────────

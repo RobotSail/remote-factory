@@ -169,7 +169,7 @@ def _build_ceo_task(
             f"You are in interactive planning mode on an **existing project** at `{project_path}`.\n\n"
             f"Run the Plan Loop (P0-P3) with interactive approval. Research the project "
             f"(local study + external best practices), synthesize an improvement spec "
-            f"through user feedback, then transition to Improve mode.\n\n"
+            f"through user feedback. After you approve the plan at the strategy gate, the workflow continues to implementation automatically.\n\n"
         )
         if focus:
             task += (
