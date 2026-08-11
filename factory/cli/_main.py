@@ -195,9 +195,16 @@ def build_parser() -> argparse.ArgumentParser:
         add_validation_recovery_parsers,
     )
 
+    from importlib.metadata import version as pkg_version
+
     parser = _GroupedHelpParser(
         prog="factory",
         description="Remote Factory — domain-agnostic multi-agent software evolution loop",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"remote-factory {pkg_version('remote-factory')}",
     )
     parser.add_argument(
         "--refactory-agent",
