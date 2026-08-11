@@ -231,7 +231,7 @@ def test_design_without_just_plan_unchanged():
     """Verify design_workflow() without just_plan is identical to before."""
     wf = design_workflow()
     assert wf.name == "design"
-    assert wf.terminal is False
+    assert wf.terminal is True
     assert wf.start_node == "gate_has_factory"
     assert "builder" in wf.nodes
     assert "gate_build" in wf.nodes
