@@ -360,10 +360,10 @@ class WorkflowRegistry:
         """
         if not cls._entries:
             cls.discover(project_path)
-        entries = cls._entries.values()
+        result = list(cls._entries.values())
         if plugins_only:
-            entries = [e for e in entries if e.source == "entry_point"]
-        return sorted(entries, key=lambda e: (e.source != "builtin", e.name))
+            result = [e for e in result if e.source == "entry_point"]
+        return sorted(result, key=lambda e: (e.source != "builtin", e.name))
 
 
 def _load_workflow_file(path: Path) -> tuple[dict[str, Any], Any]:

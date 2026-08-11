@@ -142,12 +142,15 @@ def manifest_from_meta(meta: dict[str, object], *, strict: bool = True) -> Workf
             stacklevel=2,
         )
 
+    raw_sv = meta.get("schema_version", 1)
+    raw_caps = meta.get("capabilities", [])
+
     return WorkflowManifest(
         name=str(name),
         description=str(description),
-        schema_version=int(meta.get("schema_version", 1)),  # type: ignore[arg-type]
+        schema_version=int(raw_sv) if isinstance(raw_sv, (int, float, str)) else 1,
         min_factory_version=meta.get("min_factory_version"),  # type: ignore[arg-type]
-        capabilities=list(meta.get("capabilities", [])),  # type: ignore[arg-type]
+        capabilities=list(raw_caps) if isinstance(raw_caps, list) else [],
         author=str(meta.get("author", "")),
         url=str(meta.get("url", "")),
     )
