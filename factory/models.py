@@ -495,6 +495,7 @@ class CycleState(BaseModel):
         "build",
         "create",
         "deep-qa",
+        "deep-research",
         "design",
         "discover",
         "founder",

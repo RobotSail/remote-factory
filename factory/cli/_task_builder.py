@@ -46,6 +46,18 @@ def _mode_suffix(mode: str, discover_only: bool) -> str:
             "run --mode improve afterward to harden what works. "
             "The full step-by-step playbook is in your system prompt above."
         ),
+        "deep-research": (
+            "\n\nRun Deep Research mode: single-agent iterative research with coverage checking. "
+            "The workflow runs Study → deep_researcher (single agent with internal iteration) → "
+            "CEO coverage gate → Strategist → Archivist. "
+            "The researcher performs multiple rounds of WebSearch/WebFetch internally, "
+            "following an inside-out protocol: internal project state first, then external "
+            "search shaped by internal findings. Includes faithfulness checks every iteration. "
+            "The coverage gate is a safety net — it should almost always PROCEED. "
+            "If --focus is provided, it defines the research topic. Otherwise, research the "
+            "project's domain broadly. Terminal mode — does not chain to build or improve. "
+            "The full step-by-step playbook is in your system prompt above."
+        ),
     }
     if mode == "discover":
         if discover_only:
@@ -271,9 +283,19 @@ def _build_ceo_task(
             f"execute exactly what it describes. Do not infer or improvise beyond what the prompt asks for."
         )
 
+    if mode == "deep-research" and focus:
+        task += (
+            f"\n\n## Research Topic\n\n"
+            f"**Topic:** {focus}\n\n"
+            f"Focus all research on this specific topic. The deep researcher investigates "
+            f"this topic using the inside-out protocol: internal project context first, "
+            f"then targeted external search. The coverage gate evaluates completeness "
+            f"against this topic.\n"
+        )
+
     _issue_numbers = issue_numbers or []
     _issue_urls = issue_urls or []
-    if focus and not create_description:
+    if focus and not create_description and mode != "deep-research":
         task += f"\n\n## Focus Directive (Targeted Mode)\n\nTarget: {focus}\n\n"
         if _issue_numbers:
             issue_labels = []
