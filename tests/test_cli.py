@@ -139,6 +139,14 @@ class TestParser:
         assert args.score_before == 0.80
         assert args.score_after == 0.85
 
+    def test_version_flag_exits_zero(self, capsys):
+        with pytest.raises(SystemExit, match="0"):
+            main(["--version"])
+        out = capsys.readouterr().out
+        assert out.startswith("remote-factory ")
+        version_str = out.strip().split(" ", 1)[1]
+        assert version_str[0].isdigit()
+
     def test_no_command_returns_1(self):
         assert main([]) == 1
 

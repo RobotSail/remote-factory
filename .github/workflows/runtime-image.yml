@@ -60,6 +60,8 @@ jobs:
             platform: linux/arm64
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # arm64 is emulated here. It is slow, and it is the only way to produce the manifest the
       # laptop half of the design pulls without maintaining a second runner.

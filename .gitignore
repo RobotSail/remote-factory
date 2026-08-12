@@ -4,6 +4,7 @@ __pycache__/
 *.egg-info/
 dist/
 !pfexec/dist/
+factory/_version.py
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/

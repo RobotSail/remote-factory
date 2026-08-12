@@ -1,6 +1,6 @@
 [project]
 name = "remote-factory"
-version = "0.2.0"
+dynamic = ["version"]
 description = "A harness for agentic software evolution — detect, delegate, evaluate, archive"
 requires-python = ">=3.11"
 dependencies = [
@@ -37,8 +37,19 @@ migrate = ["tomli_w>=1.0"]
 telemetry = ["langfuse>=3.0"]  # kept for backward compat; langfuse is now a core dep
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "v*"]
+version_scheme = "guess-next-dev"
+fallback_version = "0.0.0"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "factory/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["factory"]
