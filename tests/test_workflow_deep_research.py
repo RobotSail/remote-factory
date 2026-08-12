@@ -10,9 +10,9 @@ No ForkNode, no JoinNode, no parallel researchers.
 from __future__ import annotations
 
 from factory.models import ProjectState
+from factory.workflow.deep_research import workflow as deep_research_workflow
 from factory.workflow.definitions import (
     _get_builtin_registry,
-    deep_research_workflow,
     register_all,
 )
 from factory.workflow.primitives import (
