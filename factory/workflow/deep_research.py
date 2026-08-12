@@ -1,8 +1,8 @@
 """Deep-research single-agent iterative research workflow.
 
 Runs study → deep_researcher (single agent with internal iteration loop) →
-CEO coverage gate → strategist → archivist. Terminal mode — does not chain
-to build or improve. Triggered via `factory workflow run deep-research` or
+CEO coverage gate. Terminal mode — does not chain to build or improve.
+Triggered via `factory workflow run deep-research` or
 `factory ceo /path --mode deep-research`.
 """
 
@@ -119,8 +119,8 @@ _GATE_COVERAGE_PROMPT = (
     "research prompt? Are there sections answering questions nobody asked?\n\n"
     "2. **Grounding:** Are findings grounded in both external sources AND "
     "internal project context — not just generic advice?\n\n"
-    "3. **Actionability:** Is the report actionable for the strategist? "
-    "Can hypotheses be derived from it?\n\n"
+    "3. **Actionability:** Is the report actionable? "
+    "Can concrete next steps be derived from it?\n\n"
     "4. **Citations:** Are claims cited with source URLs (external) or "
     "file paths (internal)?\n\n"
     "**Decision:**\n"
@@ -139,7 +139,7 @@ def workflow() -> Workflow:
     """W₁₅: Deep Research Mode — single-agent iterative research with coverage checking.
 
     Study → deep_researcher (single AgentNode with internal iteration loop) →
-    gate_coverage (CEO safety net) → Strategist → Archivist
+    gate_coverage (CEO safety net).
 
     The researcher performs multiple rounds of search internally using WebSearch
     and WebFetch, with built-in faithfulness checking and coverage evaluation.
@@ -180,49 +180,10 @@ def workflow() -> Workflow:
         reads={".factory/strategy/research-combined.md"},
     )
 
-    nodes["strategist"] = AgentNode(
-        id="strategist",
-        role=AgentRole.STRATEGIST,
-        prompt_template=(
-            "Generate prioritized hypotheses based on the deep research report. "
-            "Read the combined research at .factory/strategy/research-combined.md. "
-            "Read the backlog at .factory/strategy/backlog.md if it exists. "
-            "Read observations at .factory/strategy/observations.md. "
-            "Produce actionable hypotheses grounded in the research findings. "
-            "Each hypothesis should cite specific evidence from the research report. "
-            "Write to .factory/strategy/current.md."
-        ),
-        reads={
-            ".factory/strategy/research-combined.md",
-            ".factory/strategy/observations.md",
-        },
-        writes={".factory/strategy/current.md"},
-    )
-
-    nodes["archivist"] = AgentNode(
-        id="archivist",
-        role=AgentRole.ARCHIVIST,
-        prompt_template=(
-            "Archive the deep research results and generated strategy. "
-            "Read the research report at .factory/strategy/research-combined.md. "
-            "Read the strategy at .factory/strategy/current.md. "
-            "Write a concise summary of key findings, decisions made, and "
-            "hypotheses generated to .factory/archive/deep-research.md."
-        ),
-        reads={
-            ".factory/strategy/research-combined.md",
-            ".factory/strategy/current.md",
-        },
-        writes={".factory/archive/deep-research.md"},
-        blocking=False,
-    )
-
     edges = [
         Edge(source="study", target="deep_researcher"),
         Edge(source="deep_researcher", target="gate_coverage"),
-        Edge(source="gate_coverage", target="strategist", condition=VerdictType.PROCEED),
         Edge(source="gate_coverage", target="deep_researcher", condition=VerdictType.RELOOP),
-        Edge(source="strategist", target="archivist"),
     ]
 
     def trigger(state: ProjectState, ctx: dict[str, Any]) -> bool:

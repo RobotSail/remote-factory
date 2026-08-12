@@ -49,11 +49,12 @@ def _mode_suffix(mode: str, discover_only: bool) -> str:
         "deep-research": (
             "\n\nRun Deep Research mode: single-agent iterative research with coverage checking. "
             "The workflow runs Study → deep_researcher (single agent with internal iteration) → "
-            "CEO coverage gate → Strategist → Archivist. "
+            "CEO coverage gate. "
             "The researcher performs multiple rounds of WebSearch/WebFetch internally, "
             "following an inside-out protocol: internal project state first, then external "
             "search shaped by internal findings. Includes faithfulness checks every iteration. "
             "The coverage gate is a safety net — it should almost always PROCEED. "
+            "The mode outputs only research-combined.md. "
             "If --focus is provided, it defines the research topic. Otherwise, research the "
             "project's domain broadly. Terminal mode — does not chain to build or improve. "
             "The full step-by-step playbook is in your system prompt above."

@@ -51,14 +51,12 @@ class TestDeepResearchWorkflowStructure:
             "study",
             "deep_researcher",
             "gate_coverage",
-            "strategist",
-            "archivist",
         }
         assert set(wf.nodes.keys()) == expected_nodes
 
     def test_node_count(self) -> None:
         wf = deep_research_workflow()
-        assert len(wf.nodes) == 5
+        assert len(wf.nodes) == 3
 
     def test_no_fork_or_join_nodes(self) -> None:
         """v4 constraint: no ForkNode or JoinNode in the graph."""
@@ -159,24 +157,6 @@ class TestDeepResearchNodeTypes:
         assert "Actionability" in prompt
         assert "Citations" in prompt
 
-    def test_strategist_reads_research(self) -> None:
-        wf = deep_research_workflow()
-        node = wf.nodes["strategist"]
-        assert isinstance(node, AgentNode)
-        assert node.role == AgentRole.STRATEGIST
-        assert ".factory/strategy/research-combined.md" in node.reads
-
-    def test_strategist_writes_current(self) -> None:
-        wf = deep_research_workflow()
-        node = wf.nodes["strategist"]
-        assert ".factory/strategy/current.md" in node.writes
-
-    def test_archivist_nonblocking(self) -> None:
-        wf = deep_research_workflow()
-        node = wf.nodes["archivist"]
-        assert isinstance(node, AgentNode)
-        assert node.role == AgentRole.ARCHIVIST
-        assert node.blocking is False
 
 
 # ── Edge wiring ────────────────────────────────────────────────
@@ -201,11 +181,10 @@ class TestDeepResearchEdges:
             for e in wf.edges
         )
 
-    def test_gate_proceed_to_strategist(self) -> None:
+    def test_gate_proceed_is_terminal(self) -> None:
         wf = deep_research_workflow()
-        assert any(
+        assert not any(
             e.source == "gate_coverage"
-            and e.target == "strategist"
             and e.condition == VerdictType.PROCEED
             for e in wf.edges
         )
@@ -219,18 +198,9 @@ class TestDeepResearchEdges:
             for e in wf.edges
         )
 
-    def test_strategist_to_archivist_edge(self) -> None:
-        wf = deep_research_workflow()
-        assert any(
-            e.source == "strategist"
-            and e.target == "archivist"
-            and e.condition is None
-            for e in wf.edges
-        )
-
     def test_total_edge_count(self) -> None:
         wf = deep_research_workflow()
-        assert len(wf.edges) == 5
+        assert len(wf.edges) == 3
 
 
 # ── Trigger function ──────────────────────────────────────────────
