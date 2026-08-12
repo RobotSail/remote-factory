@@ -372,7 +372,7 @@ def add_entry_point_parsers(sub: argparse._SubParsersAction) -> None:  # type: i
     )
     p.add_argument(
         "--mode",
-        choices=CEO_MODES,
+        choices=None,
         default="auto",
         help="Operating mode. Only 'create' and 'design' are actively supported; "
              "other modes (build, improve, research, meta, discover, review, refine, "
@@ -544,7 +544,7 @@ def add_entry_point_parsers(sub: argparse._SubParsersAction) -> None:  # type: i
     p.add_argument("--session", default=None, help="Custom tmux session name")
     p.add_argument(
         "--mode",
-        choices=CEO_MODES,
+        choices=None,
         default="auto",
         help="Run mode (default: auto, respects in-flight cycle)",
     )

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from factory.cli._ceo_dispatch import _start_ceo_tailer, _stop_ceo_tailer
 from factory.cli._helpers import (
+    CEO_MODES,
     _emit_cli_event,
     _ensure_dashboard,
     _print_banner,
@@ -148,6 +149,21 @@ def _validate_ceo_flags(
     mode: str = getattr(args, "mode", "auto")
     if mode == "interactive":
         mode = "design"
+    if mode.startswith("project:"):
+        mode = mode[len("project:"):]
+    if mode not in CEO_MODES and mode != "auto":
+        from factory.workflow.registry import WorkflowRegistry
+        raw_path = getattr(args, "path", None)
+        project_path = Path(raw_path).resolve() if raw_path else Path.cwd()
+        entries = WorkflowRegistry.discover(project_path)
+        if mode not in entries:
+            print(
+                f"Error: unknown mode '{mode}'. "
+                f"Not a built-in mode and not found in project workflows at "
+                f"{project_path / '.factory' / 'workflows'}.",
+                file=sys.stderr,
+            )
+            return 1
     warn_deprecated_mode(getattr(args, "mode", "auto"))
     bg: bool = getattr(args, "bg", False)
     bg_agents = _resolve_bg_agents(args)
