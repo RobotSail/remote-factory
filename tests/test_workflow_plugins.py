@@ -150,7 +150,8 @@ class TestVersionCompatibility:
         m = WorkflowManifest(
             name="test", description="test", min_factory_version="0.0.1"
         )
-        issues = check_version_compatibility(m)
+        with patch("factory.workflow.manifest._get_factory_version", return_value="1.0.0"):
+            issues = check_version_compatibility(m)
         assert issues == []
 
     def test_incompatible_version(self) -> None:
@@ -873,7 +874,8 @@ class TestCmdListFormats:
         from factory.workflow.cli import _cmd_list
 
         args = argparse.Namespace(project_path=None, plugins=False, format="json")
-        rc = _cmd_list(args)
+        with patch("factory.workflow.registry.log"), patch("factory.workflow.cli.log"):
+            rc = _cmd_list(args)
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         assert isinstance(data, list)
@@ -905,7 +907,8 @@ class TestCmdListFormats:
         )
 
         args = argparse.Namespace(project_path=None, plugins=False, format="json")
-        rc = _cmd_list(args)
+        with patch("factory.workflow.registry.log"), patch("factory.workflow.cli.log"):
+            rc = _cmd_list(args)
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         plugin_entry = next(d for d in data if d["name"] == "ep:myplugin")
