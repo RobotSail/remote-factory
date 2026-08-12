@@ -178,6 +178,16 @@ class TestParser:
         assert args.mode == "interactive"
         assert args.path == "distributed eval runner"
 
+    def test_ceo_mode_project_prefix(self):
+        parser = build_parser()
+        args = parser.parse_args(["ceo", "/tmp/proj", "--mode", "project:greet"])
+        assert args.mode == "project:greet"
+
+    def test_ceo_mode_unknown_accepted_by_parser(self):
+        parser = build_parser()
+        args = parser.parse_args(["ceo", "/tmp/proj", "--mode", "my-custom-mode"])
+        assert args.mode == "my-custom-mode"
+
     def test_ceo_path_optional(self):
         parser = build_parser()
         args = parser.parse_args(["ceo", "--mode", "design"])
@@ -3081,9 +3091,11 @@ class TestJustPlanFlag:
         assert just_plan is True
 
     def test_mode_plan_no_longer_valid(self, capsys):
-        """--mode plan is no longer a valid mode choice."""
-        with pytest.raises(SystemExit):
-            main(["ceo", "/some/path", "--mode", "plan"])
+        """--mode plan is rejected at runtime (not a valid built-in or project mode)."""
+        result = main(["ceo", "/some/path", "--mode", "plan"])
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "unknown mode" in captured.err
 
     def test_just_plan_default_is_false(self):
         """just_plan defaults to False when flag is omitted."""
