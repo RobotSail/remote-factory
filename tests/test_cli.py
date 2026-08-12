@@ -179,6 +179,16 @@ class TestParser:
         assert args.mode == "interactive"
         assert args.path == "distributed eval runner"
 
+    def test_ceo_mode_project_prefix(self):
+        parser = build_parser()
+        args = parser.parse_args(["ceo", "/tmp/proj", "--mode", "project:greet"])
+        assert args.mode == "project:greet"
+
+    def test_ceo_mode_unknown_accepted_by_parser(self):
+        parser = build_parser()
+        args = parser.parse_args(["ceo", "/tmp/proj", "--mode", "my-custom-mode"])
+        assert args.mode == "my-custom-mode"
+
     def test_ceo_path_optional(self):
         parser = build_parser()
         args = parser.parse_args(["ceo", "--mode", "design"])
