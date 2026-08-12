@@ -126,7 +126,7 @@ class TestDeepResearchNodeTypes:
         assert isinstance(node, AgentNode)
         prompt = node.prompt_template
         assert "research-combined.md" in prompt
-        assert "ceo-verdict-research.md" in prompt
+        assert "ceo-verdict-coverage.md" in prompt
         assert "RELOOP" in prompt
 
     def test_deep_researcher_writes_combined_report(self) -> None:

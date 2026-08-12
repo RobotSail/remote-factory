@@ -107,7 +107,7 @@ _DEEP_RESEARCHER_PROMPT = (
     "## RELOOP HANDLING\n\n"
     "If .factory/strategy/research-combined.md already exists (from a prior "
     "iteration due to CEO gate RELOOP), read it as your starting report. "
-    "Read .factory/reviews/ceo-verdict-research.md for the CEO's gap analysis. "
+    "Read .factory/reviews/ceo-verdict-coverage.md for the CEO's gap analysis. "
     "Focus on filling the specific gaps identified — do NOT restart from scratch."
 )
 
