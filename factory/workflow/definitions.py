@@ -3979,6 +3979,9 @@ def _get_builtin_registry() -> dict[str, Any]:
         "parallel-improve": parallel_improve_workflow,
         "plan": lambda: design_workflow(just_plan=True),
         "evolve": evolve_workflow,
+        "deep-research": lambda: __import__(
+            "factory.workflow.deep_research", fromlist=["workflow"]
+        ).workflow(),
         "deep-qa": lambda: __import__(
             "factory.workflow.deep_qa", fromlist=["workflow"]
         ).workflow(),
