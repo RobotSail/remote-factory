@@ -81,6 +81,17 @@ def _mode_suffix(mode: str, discover_only: bool) -> str:
     )
 
 
+def _append_deep_research_topic(task: str, focus: str) -> str:
+    return task + (
+        f"\n\n## Research Topic\n\n"
+        f"**Topic:** {focus}\n\n"
+        f"Focus all research on this specific topic. The deep researcher investigates "
+        f"this topic using the inside-out protocol: internal project context first, "
+        f"then targeted external search. The coverage gate evaluates completeness "
+        f"against this topic.\n"
+    )
+
+
 def _build_ceo_task(
     project_path: Path,
     mode: str,
@@ -284,14 +295,7 @@ def _build_ceo_task(
         )
 
     if mode == "deep-research" and focus:
-        task += (
-            f"\n\n## Research Topic\n\n"
-            f"**Topic:** {focus}\n\n"
-            f"Focus all research on this specific topic. The deep researcher investigates "
-            f"this topic using the inside-out protocol: internal project context first, "
-            f"then targeted external search. The coverage gate evaluates completeness "
-            f"against this topic.\n"
-        )
+        task = _append_deep_research_topic(task, focus)
 
     _issue_numbers = issue_numbers or []
     _issue_urls = issue_urls or []
