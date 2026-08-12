@@ -166,17 +166,16 @@ def _deep_qa_subgraph(
     code_reviewer_extra: str = "",
     adversarial_extra: str = "",
 ) -> tuple[dict[str, Any], list[Edge]]:
-    """Return (nodes, internal_edges) for the 4-node deep-qa verification subgraph.
+    """Return (nodes, internal_edges) for the parallel deep-qa verification subgraph.
 
-    Three specialist agents run sequentially with a single gate after
-    code_reviewer to short-circuit on critical bugs:
+    Three specialist agents run in parallel via fork/join:
 
-        health_checker → code_reviewer → gate_review → adversarial_tester
+        fork_qa → [health_checker, code_reviewer, adversarial_tester] → join_qa
 
     Agent prompts live in their role .md files; prompt_template is only set
     when a workflow passes extra context via code_reviewer_extra / adversarial_extra.
-    The caller wires the entry edge (→ health_checker) and the exit edge
-    (adversarial_tester →) into the surrounding workflow.
+    The caller wires the entry edge (→ fork_qa) and the exit edge
+    (join_qa →) into the surrounding workflow.
     """
     nodes: dict[str, Any] = {}
 
@@ -195,18 +194,6 @@ def _deep_qa_subgraph(
         writes={".factory/reviews/code-review.md"},
     )
 
-    nodes["gate_review"] = GateNode(
-        id="gate_review",
-        evaluator_type="fn",
-        evaluator_command=(
-            "if grep -q 'CRITICAL_FOUND' "
-            "{project_path}/.factory/reviews/code-review.md; "
-            "then echo 'FAIL: critical issues found'; "
-            "else echo 'PROCEED'; fi"
-        ),
-        reads={".factory/reviews/code-review.md"},
-    )
-
     nodes["adversarial_tester"] = AgentNode(
         id="adversarial_tester",
         role=AgentRole.ADVERSARIAL_TESTER,
@@ -216,10 +203,23 @@ def _deep_qa_subgraph(
         writes={".factory/reviews/adversarial-qa.md"},
     )
 
+    nodes["fork_qa"] = ForkNode(
+        id="fork_qa",
+        targets=["health_checker", "code_reviewer", "adversarial_tester"],
+    )
+
+    nodes["join_qa"] = JoinNode(
+        id="join_qa",
+        sources=["health_checker", "code_reviewer", "adversarial_tester"],
+        reads={
+            ".factory/reviews/health-check.md",
+            ".factory/reviews/code-review.md",
+            ".factory/reviews/adversarial-qa.md",
+        },
+    )
+
     internal_edges = [
-        Edge(source="health_checker", target="code_reviewer"),
-        Edge(source="code_reviewer", target="gate_review"),
-        Edge(source="gate_review", target="adversarial_tester", condition=VerdictType.PROCEED),
+        Edge(source="fork_qa", target="join_qa"),
     ]
 
     return nodes, internal_edges
@@ -528,12 +528,12 @@ def build_workflow() -> Workflow:
         # Builder → build gate
         Edge(source="builder", target="gate_build"),
         # Build gate → deep-qa (proceed) or builder (reloop)
-        Edge(source="gate_build", target="health_checker", condition=VerdictType.PROCEED),
+        Edge(source="gate_build", target="fork_qa", condition=VerdictType.PROCEED),
         Edge(source="gate_build", target="builder", condition=VerdictType.RELOOP),
         # Deep-QA internal edges
         *dq_edges,
         # adversarial_tester → gate_qa
-        Edge(source="adversarial_tester", target="gate_qa"),
+        Edge(source="join_qa", target="gate_qa"),
         # gate_qa → doc freshness (proceed) or builder (reloop, max 3)
         Edge(source="gate_qa", target="gate_doc_freshness", condition=VerdictType.PROCEED),
         Edge(source="gate_qa", target="builder", condition=VerdictType.RELOOP),
@@ -769,10 +769,11 @@ def design_workflow(just_plan: bool = False) -> Workflow:
             "archivist_plan",
             "builder",
             "gate_build",
+            "fork_qa",
             "health_checker",
             "code_reviewer",
-            "gate_review",
             "adversarial_tester",
+            "join_qa",
             "gate_qa",
             "gate_doc_freshness",
             "gate_precheck",
@@ -1052,12 +1053,12 @@ def improve_workflow() -> Workflow:
         # Builder → build gate
         Edge(source="builder", target="gate_build"),
         # Build gate → deep-qa (proceed) or builder (reloop)
-        Edge(source="gate_build", target="health_checker", condition=VerdictType.PROCEED),
+        Edge(source="gate_build", target="fork_qa", condition=VerdictType.PROCEED),
         Edge(source="gate_build", target="builder", condition=VerdictType.RELOOP),
         # Deep-QA internal edges
         *dq_edges,
         # adversarial_tester → gate_qa
-        Edge(source="adversarial_tester", target="gate_qa"),
+        Edge(source="join_qa", target="gate_qa"),
         # gate_qa → doc freshness (proceed) or builder (reloop, max 3)
         Edge(source="gate_qa", target="gate_doc_freshness", condition=VerdictType.PROCEED),
         Edge(source="gate_qa", target="builder", condition=VerdictType.RELOOP),
@@ -1202,12 +1203,12 @@ def research_workflow() -> Workflow:
         # Builder → build gate
         Edge(source="builder", target="gate_build"),
         # Build gate → deep-qa (proceed) or builder (reloop)
-        Edge(source="gate_build", target="health_checker", condition=VerdictType.PROCEED),
+        Edge(source="gate_build", target="fork_qa", condition=VerdictType.PROCEED),
         Edge(source="gate_build", target="builder", condition=VerdictType.RELOOP),
         # Deep-QA internal edges
         *dq_edges,
         # adversarial_tester → gate_qa
-        Edge(source="adversarial_tester", target="gate_qa"),
+        Edge(source="join_qa", target="gate_qa"),
         # gate_qa → doc freshness (proceed) or builder (reloop, max 3)
         Edge(source="gate_qa", target="gate_doc_freshness", condition=VerdictType.PROCEED),
         Edge(source="gate_qa", target="builder", condition=VerdictType.RELOOP),
@@ -1769,11 +1770,11 @@ def refine_workflow() -> Workflow:
         Edge(source="begin", target="create_issue"),
         Edge(source="create_issue", target="builder"),
         # Builder → deep-qa directly (no gate_build in refine)
-        Edge(source="builder", target="health_checker"),
+        Edge(source="builder", target="fork_qa"),
         # Deep-QA internal edges
         *dq_edges,
         # adversarial_tester → gate_qa
-        Edge(source="adversarial_tester", target="gate_qa"),
+        Edge(source="join_qa", target="gate_qa"),
         Edge(source="gate_qa", target="gate_doc_freshness", condition=VerdictType.PROCEED),
         Edge(source="gate_qa", target="builder", condition=VerdictType.RELOOP),
         # Doc freshness → precheck (proceed) or builder (reloop)
@@ -2048,12 +2049,12 @@ def create_workflow() -> Workflow:
         # Builder → build gate
         Edge(source="builder", target="gate_build"),
         # Build gate → deep-qa (proceed) or builder (reloop)
-        Edge(source="gate_build", target="health_checker", condition=VerdictType.PROCEED),
+        Edge(source="gate_build", target="fork_qa", condition=VerdictType.PROCEED),
         Edge(source="gate_build", target="builder", condition=VerdictType.RELOOP),
         # Deep-QA internal edges
         *dq_edges,
         # adversarial_tester → gate_qa
-        Edge(source="adversarial_tester", target="gate_qa"),
+        Edge(source="join_qa", target="gate_qa"),
         # gate_qa → doc freshness (proceed) or builder (reloop)
         Edge(source="gate_qa", target="gate_doc_freshness", condition=VerdictType.PROCEED),
         Edge(source="gate_qa", target="builder", condition=VerdictType.RELOOP),
@@ -4269,7 +4270,13 @@ def parallel_improve_workflow() -> Workflow:
     dq_rename = {nid: f"exp_{nid}" for nid in dq_nodes}
     for nid, node in dq_nodes.items():
         new_id = dq_rename[nid]
-        new_node = node.model_copy(update={"id": new_id})
+        update: dict[str, Any] = {"id": new_id}
+        # Rename ForkNode targets and JoinNode sources
+        if isinstance(node, ForkNode):
+            update["targets"] = [dq_rename.get(t, t) for t in node.targets]
+        if isinstance(node, JoinNode):
+            update["sources"] = [dq_rename.get(s, s) for s in node.sources]
+        new_node = node.model_copy(update=update)
         exp_dq_nodes[new_id] = new_node
     for edge in dq_edges:
         exp_dq_edges.append(
@@ -4374,11 +4381,11 @@ def parallel_improve_workflow() -> Workflow:
             Edge(source="exp_begin", target="exp_builder"),
             Edge(source="exp_builder", target="exp_gate_build"),
             Edge(
-                source="exp_gate_build", target="exp_health_checker", condition=VerdictType.PROCEED
+                source="exp_gate_build", target="exp_fork_qa", condition=VerdictType.PROCEED
             ),
             Edge(source="exp_gate_build", target="exp_builder", condition=VerdictType.RELOOP),
             *exp_dq_edges,
-            Edge(source="exp_adversarial_tester", target="exp_gate_qa"),
+            Edge(source="exp_join_qa", target="exp_gate_qa"),
             Edge(source="exp_gate_qa", target="exp_gate_precheck", condition=VerdictType.PROCEED),
             Edge(source="exp_gate_qa", target="exp_builder", condition=VerdictType.RELOOP),
             Edge(source="exp_gate_precheck", target="exp_eval", condition=VerdictType.PROCEED),

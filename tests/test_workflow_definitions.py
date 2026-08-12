@@ -585,11 +585,15 @@ def _workflows_with_builder() -> list[str]:
 
 
 def _is_reachable(workflow_name: str, source_id: str, target_id: str) -> bool:
-    """Check if target_id is reachable from source_id via forward edges."""
+    """Check if target_id is reachable from source_id via forward edges + fork targets."""
     wf = register_all()[workflow_name]
     adj: dict[str, list[str]] = defaultdict(list)
     for edge in wf.edges:
         adj[edge.source].append(edge.target)
+    # Include ForkNode targets as implicit edges for reachability
+    for nid, node in wf.nodes.items():
+        if isinstance(node, ForkNode):
+            adj[nid].extend(node.targets)
 
     visited: set[str] = set()
     queue: deque[str] = deque([source_id])
@@ -647,10 +651,11 @@ class TestBuilderQaReachability:
 
 
 DEEP_QA_NODE_IDS = {
+    "fork_qa",
     "health_checker",
     "code_reviewer",
-    "gate_review",
     "adversarial_tester",
+    "join_qa",
 }
 
 DEEP_QA_WORKFLOWS = ["build", "improve", "research", "refine", "create"]
@@ -667,7 +672,7 @@ def _get_workflow(name: str):
 
 
 class TestDeepQaSubgraph:
-    """Verify the deep-QA subgraph is correctly wired in all 5 core workflows."""
+    """Verify the parallel deep-QA subgraph is correctly wired in all 5 core workflows."""
 
     @pytest.mark.parametrize("wf_name", DEEP_QA_WORKFLOWS)
     def test_deep_qa_present_in_all_workflows(self, wf_name: str) -> None:
@@ -679,9 +684,7 @@ class TestDeepQaSubgraph:
     def test_deep_qa_internal_edges(self, wf_name: str) -> None:
         wf = _get_workflow(wf_name)
         expected_edges = [
-            ("health_checker", "code_reviewer", None),
-            ("code_reviewer", "gate_review", None),
-            ("gate_review", "adversarial_tester", VerdictType.PROCEED),
+            ("fork_qa", "join_qa", None),
         ]
         edge_set = {(e.source, e.target, e.condition) for e in wf.edges}
         for src, tgt, cond in expected_edges:
@@ -690,12 +693,11 @@ class TestDeepQaSubgraph:
             )
 
     @pytest.mark.parametrize("wf_name", DEEP_QA_WORKFLOWS)
-    def test_deep_qa_gate_review_is_fn(self, wf_name: str) -> None:
+    def test_deep_qa_fork_targets(self, wf_name: str) -> None:
         wf = _get_workflow(wf_name)
-        gate = wf.nodes["gate_review"]
-        assert isinstance(gate, GateNode)
-        assert gate.evaluator_type == "fn"
-        assert "CRITICAL_FOUND" in gate.evaluator_command
+        fork = wf.nodes["fork_qa"]
+        assert isinstance(fork, ForkNode)
+        assert set(fork.targets) == {"health_checker", "code_reviewer", "adversarial_tester"}
 
     @pytest.mark.parametrize("wf_name", DEEP_QA_WORKFLOWS)
     def test_deep_qa_no_redundant_nodes(self, wf_name: str) -> None:
