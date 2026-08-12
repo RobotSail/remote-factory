@@ -81,6 +81,65 @@ def _mode_suffix(mode: str, discover_only: bool) -> str:
     )
 
 
+def _append_focus_directive(
+    focus: str | None,
+    mode: str,
+    create_description: str | None,
+    issue_numbers: list[int] | None,
+    issue_urls: list[str] | None,
+    issue_number: int | None,
+    issue_url: str | None,
+) -> str:
+    if not focus or create_description or mode == "deep-research":
+        return ""
+    _issue_numbers = issue_numbers or []
+    _issue_urls = issue_urls or []
+    result = f"\n\n## Focus Directive (Targeted Mode)\n\nTarget: {focus}\n\n"
+    if _issue_numbers:
+        issue_labels = []
+        for i, num in enumerate(_issue_numbers):
+            label = f"#{num}"
+            if i < len(_issue_urls) and _issue_urls[i]:
+                label += f" ({_issue_urls[i]})"
+            issue_labels.append(label)
+        result += (
+            f"These targets are from issues {', '.join(issue_labels)}. "
+            f"All issue specs have been written to `.factory/strategy/current.md`. "
+            f"Read it for the complete requirements.\n\n"
+        )
+    elif issue_number:
+        issue_label = f"#{issue_number}"
+        if issue_url:
+            issue_label += f" ({issue_url})"
+        result += (
+            f"This target is from issue {issue_label}. "
+            f"The full issue spec has been written to `.factory/strategy/current.md`. "
+            f"Read it for the complete requirements.\n\n"
+        )
+    result += (
+        "Single-item mode. This target has been added to the backlog. "
+        "The Strategist must generate exactly ONE hypothesis for this item. "
+        "No other hypotheses this cycle — no additional backlog clearing, no new items.\n"
+        "After this single experiment completes (keep or revert), skip to final archival. "
+        "Do not loop back for more hypotheses.\n"
+    )
+    if _issue_numbers:
+        nums_str = ", ".join(f"#{n}" for n in _issue_numbers)
+        finalize_flags = " ".join(f"--issue {n}" for n in _issue_numbers)
+        result += (
+            f"\n## Issue Tracking\n\n"
+            f"This cycle is working on issues {nums_str}. "
+            f"When finalizing, pass `{finalize_flags}` to `factory finalize`."
+        )
+    elif issue_number:
+        result += (
+            f"\n## Issue Tracking\n\n"
+            f"This cycle is working on issue #{issue_number}. "
+            f"When finalizing, pass `--issue {issue_number}` to `factory finalize`."
+        )
+    return result
+
+
 def _append_deep_research_topic(task: str, focus: str) -> str:
     return task + (
         f"\n\n## Research Topic\n\n"
@@ -297,52 +356,10 @@ def _build_ceo_task(
     if mode == "deep-research" and focus:
         task = _append_deep_research_topic(task, focus)
 
-    _issue_numbers = issue_numbers or []
-    _issue_urls = issue_urls or []
-    if focus and not create_description and mode != "deep-research":
-        task += f"\n\n## Focus Directive (Targeted Mode)\n\nTarget: {focus}\n\n"
-        if _issue_numbers:
-            issue_labels = []
-            for i, num in enumerate(_issue_numbers):
-                label = f"#{num}"
-                if i < len(_issue_urls) and _issue_urls[i]:
-                    label += f" ({_issue_urls[i]})"
-                issue_labels.append(label)
-            task += (
-                f"These targets are from issues {', '.join(issue_labels)}. "
-                f"All issue specs have been written to `.factory/strategy/current.md`. "
-                f"Read it for the complete requirements.\n\n"
-            )
-        elif issue_number:
-            issue_label = f"#{issue_number}"
-            if issue_url:
-                issue_label += f" ({issue_url})"
-            task += (
-                f"This target is from issue {issue_label}. "
-                f"The full issue spec has been written to `.factory/strategy/current.md`. "
-                f"Read it for the complete requirements.\n\n"
-            )
-        task += (
-            "Single-item mode. This target has been added to the backlog. "
-            "The Strategist must generate exactly ONE hypothesis for this item. "
-            "No other hypotheses this cycle — no additional backlog clearing, no new items.\n"
-            "After this single experiment completes (keep or revert), skip to final archival. "
-            "Do not loop back for more hypotheses.\n"
-        )
-        if _issue_numbers:
-            nums_str = ", ".join(f"#{n}" for n in _issue_numbers)
-            finalize_flags = " ".join(f"--issue {n}" for n in _issue_numbers)
-            task += (
-                f"\n## Issue Tracking\n\n"
-                f"This cycle is working on issues {nums_str}. "
-                f"When finalizing, pass `{finalize_flags}` to `factory finalize`."
-            )
-        elif issue_number:
-            task += (
-                f"\n## Issue Tracking\n\n"
-                f"This cycle is working on issue #{issue_number}. "
-                f"When finalizing, pass `--issue {issue_number}` to `factory finalize`."
-            )
+    task += _append_focus_directive(
+        focus, mode, create_description,
+        issue_numbers, issue_urls, issue_number, issue_url,
+    )
 
     if branch:
         task += (
