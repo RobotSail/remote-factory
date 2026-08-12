@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 
-from factory.cli._helpers import CEO_MODES, RUN_MODES
 
 
 def add_project_setup_parsers(sub: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]

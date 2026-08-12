@@ -156,7 +156,8 @@ def _validate_ceo_flags(
         raw_path = getattr(args, "path", None)
         project_path = Path(raw_path).resolve() if raw_path else Path.cwd()
         entries = WorkflowRegistry.discover(project_path)
-        if mode not in entries:
+        project_entries = {n for n, e in entries.items() if e.source == "project"}
+        if mode not in project_entries:
             print(
                 f"Error: unknown mode '{mode}'. "
                 f"Not a built-in mode and not found in project workflows at "

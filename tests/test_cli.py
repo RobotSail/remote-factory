@@ -3150,9 +3150,11 @@ class TestJustPlanFlag:
         assert just_plan is True
 
     def test_mode_plan_no_longer_valid(self, capsys):
-        """--mode plan is no longer a valid mode choice."""
-        with pytest.raises(SystemExit):
-            main(["ceo", "/some/path", "--mode", "plan"])
+        """--mode plan is rejected at runtime (not a valid built-in or project mode)."""
+        result = main(["ceo", "/some/path", "--mode", "plan"])
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "unknown mode" in captured.err
 
     def test_just_plan_default_is_false(self):
         """just_plan defaults to False when flag is omitted."""
