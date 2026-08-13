@@ -114,6 +114,7 @@ _COMMAND_GROUPS: list[tuple[str, list[str]]] = [
             "install",
             "self-update",
             "runners",
+            "plugins",
             "usage",
             "serve-mcp",
         ],
@@ -182,6 +183,40 @@ class _GroupedHelpParser(argparse.ArgumentParser):
         return "\n".join(parts)
 
 
+def _cmd_plugins(args: argparse.Namespace) -> int:
+    """List discovered plugins and their registered extensions."""
+    import dataclasses
+    import json
+
+    from factory.plugins import get_registry, get_results
+
+    results = get_results()
+    registry = get_registry()
+
+    if getattr(args, "json", False) if hasattr(args, "json") else False:
+        data = [dataclasses.asdict(r) for r in results]
+        print(json.dumps(data, indent=2))
+        return 0
+
+    if not results:
+        print("No plugins discovered.")
+        return 0
+
+    for r in results:
+        ver = f" v{r.version}" if r.version else ""
+        line = f"  {r.name}{ver}: {r.status}"
+        if r.reason:
+            line += f" ({r.reason})"
+        print(line)
+
+    if registry.commands:
+        print(f"\nRegistered commands: {', '.join(sorted(registry.commands))}")
+    if registry.modes:
+        print(f"Registered modes: {', '.join(registry.modes)}")
+
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     from factory.cli._parser_groups import (
         add_archive_parsers,
@@ -222,6 +257,41 @@ def build_parser() -> argparse.ArgumentParser:
     add_configuration_parsers(sub)
     add_validation_recovery_parsers(sub)
     add_entry_point_parsers(sub)
+
+    # ── plugin commands ──────────────────────────────────────────
+    p_plugins = sub.add_parser("plugins", help="List discovered plugins and their extensions")
+    p_plugins.add_argument("--json", action="store_true", default=False, help="Machine-readable JSON output")
+
+    from factory.plugins import PluginRegistry, load_plugins
+
+    _plugin_registry = PluginRegistry()
+    load_plugins(_plugin_registry)
+
+    for cmd_name, spec in _plugin_registry.commands.items():
+        p_plugin = sub.add_parser(cmd_name, help=spec.help)
+        if spec.add_arguments is not None:
+            spec.add_arguments(p_plugin)
+        p_plugin.set_defaults(_plugin_handler=spec.handler)
+
+    # ── plugin parser extensions ────────────────────────────────
+    sub_action: argparse._SubParsersAction | None = None  # type: ignore[type-arg]
+    if parser._subparsers is not None:
+        for action in parser._subparsers._group_actions:
+            if isinstance(action, argparse._SubParsersAction):
+                sub_action = action
+                break
+
+    if sub_action is not None:
+        import structlog as _structlog
+
+        _ext_log = _structlog.get_logger()
+        for ext_name, ext_fns in _plugin_registry.parser_extensions.items():
+            ext_parser = sub_action._name_parser_map.get(ext_name)
+            if ext_parser is None:
+                _ext_log.warning("plugin_parser_extension_no_target", subcommand=ext_name)
+                continue
+            for ext_fn in ext_fns:
+                ext_fn(ext_parser)
 
     # graph — code knowledge graph operations
     graph_parser = sub.add_parser("graph", help="Code knowledge graph via graphify")
@@ -348,6 +418,7 @@ def main(argv: list[str] | None = None) -> int:
         "workflow": lambda a: __import__(
             "factory.workflow.cli", fromlist=["cmd_workflow"]
         ).cmd_workflow(a),
+        "plugins": _cmd_plugins,
         "mempalace": _cli.cmd_mempalace,
         "graph": lambda a: {
             "extract": _cli.cmd_graph_extract,
@@ -359,8 +430,15 @@ def main(argv: list[str] | None = None) -> int:
         )(a),
     }
 
+    handler = handlers.get(args.command)
+    if handler is None:
+        handler = getattr(args, "_plugin_handler", None)
+    if handler is None:
+        print(f"Unknown command: {args.command}", file=sys.stderr)
+        return 1
+
     try:
-        return handlers[args.command](args)
+        return handler(args)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

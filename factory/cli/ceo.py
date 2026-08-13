@@ -7,6 +7,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import structlog
+
 from factory.cli._ceo_helpers import (
     _execute_ceo,
     _resolve_ceo_project,
@@ -96,6 +98,18 @@ def cmd_ceo(args: argparse.Namespace) -> int:
     )
     if err is not None:
         return err
+
+    from factory.plugins import get_registry
+
+    _log = structlog.get_logger()
+    registry = get_registry()
+    for hook in registry.ceo_pre_hooks:
+        try:
+            override = hook(mode, args)
+            if override is not None:
+                project_path = Path(override).resolve()
+        except Exception as exc:
+            _log.warning("plugin_pre_hook_failed", error=str(exc))
 
     if design_existing:
         banner_mode = "design"
