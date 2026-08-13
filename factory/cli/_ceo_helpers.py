@@ -13,9 +13,9 @@ from pathlib import Path
 
 from factory.cli._ceo_dispatch import _start_ceo_tailer, _stop_ceo_tailer
 from factory.cli._helpers import (
-    CEO_MODES,
     _emit_cli_event,
     _ensure_dashboard,
+    get_all_ceo_modes,
     _print_banner,
     _read_target_branch,
     _resolve_runner,
@@ -151,7 +151,8 @@ def _validate_ceo_flags(
         mode = "design"
     if mode.startswith("project:"):
         mode = mode[len("project:"):]
-    if mode not in CEO_MODES and mode != "auto":
+    all_modes = get_all_ceo_modes()
+    if mode not in all_modes and mode != "auto":
         from factory.workflow.registry import WorkflowRegistry
         raw_path = getattr(args, "path", None)
         project_path = Path(raw_path).resolve() if raw_path else Path.cwd()
@@ -207,11 +208,15 @@ def _validate_ceo_flags(
 
     raw_path = getattr(args, "path", None)
     if not raw_path:
-        print(
-            "Error: provide a project path, GitHub URL, idea file, or prompt",
-            file=sys.stderr,
-        )
-        return 1
+        from factory.plugins import get_registry
+        plugin_registry = get_registry()
+        has_pre_hooks = bool(plugin_registry.ceo_pre_hooks)
+        if not has_pre_hooks:
+            print(
+                "Error: provide a project path, GitHub URL, idea file, or prompt",
+                file=sys.stderr,
+            )
+            return 1
 
     no_github = getattr(args, "no_github", False)
     if no_github:
