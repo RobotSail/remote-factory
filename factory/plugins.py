@@ -12,6 +12,22 @@ log = structlog.get_logger()
 
 ENTRY_POINT_GROUP = "factory.plugins"
 
+BUILTIN_COMMANDS: frozenset[str] = frozenset({
+    "ace", "ace-stats", "adversarial-state", "agent", "archive",
+    "backfill-archive", "backfill-citations", "backlog-add", "backlog-list",
+    "backlog-remove", "baseline", "begin", "ceo", "checkpoint", "clean-pr",
+    "config", "contained", "dashboard", "deferred-list", "deferred-remove",
+    "detect", "diff", "digest", "discover", "emit", "eval", "explain",
+    "export", "finalize", "graph", "guard", "history", "home", "init",
+    "insights", "install", "leakage-check", "log", "mempalace", "message",
+    "notify", "plugins", "precheck", "profile", "refactory", "refine-begin",
+    "refine-complete", "refine-status", "registry-list", "report-update",
+    "research", "resume", "review", "run", "runners", "self-update",
+    "serve-mcp", "spec", "status", "study", "summary", "tmux",
+    "tmux-capture", "tmux-ls", "tmux-stop", "usage", "validate-research",
+    "vault-init", "workflow",
+})
+
 
 @dataclass
 class CommandSpec:
@@ -37,6 +53,9 @@ class PluginRegistry:
 
     def add_commands(self, commands: dict[str, CommandSpec]) -> None:
         for name, spec in commands.items():
+            if name in BUILTIN_COMMANDS:
+                log.warning("plugin_command_collision_builtin", command=name, action="skipped")
+                continue
             if name in self.commands:
                 log.warning("plugin_command_collision", command=name, action="keeping_first")
                 continue

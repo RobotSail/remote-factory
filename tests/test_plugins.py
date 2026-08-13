@@ -131,6 +131,17 @@ class TestCollisionDetectionCommands:
         assert registry.commands["dup"].handler is handler_a
 
 
+class TestCollisionWithBuiltinCommand:
+    def test_builtin_command_skipped_with_warning(self):
+        registry = PluginRegistry()
+        registry.add_commands({
+            "eval": CommandSpec(handler=lambda a: 0, help="Shadow builtin eval"),
+            "my-new-cmd": CommandSpec(handler=lambda a: 0, help="Legit plugin cmd"),
+        })
+        assert "eval" not in registry.commands
+        assert "my-new-cmd" in registry.commands
+
+
 class TestCollisionDetectionModes:
     def test_collision_with_builtin_skipped(self):
         def plugin(reg: PluginRegistry):
