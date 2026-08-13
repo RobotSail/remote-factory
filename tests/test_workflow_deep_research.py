@@ -144,13 +144,13 @@ class TestDeepResearchNodeTypes:
         assert isinstance(node, AgentNode)
         assert node.timeout == 1800
 
-    def test_deep_researcher_prompt_triggers_mode_5(self) -> None:
+    def test_deep_researcher_prompt_contains_protocol(self) -> None:
         wf = deep_research_workflow()
         node = wf.nodes["deep_researcher"]
         assert isinstance(node, AgentNode)
         prompt = node.prompt_template
-        assert "Mode 5" in prompt
-        assert "Deep Research" in prompt
+        assert "Phase 1: Internal Research" in prompt
+        assert "Phase 2: Read Research Directions" in prompt
         assert "research-directions.md" in prompt
 
     def test_deep_researcher_writes_combined_report(self) -> None:
