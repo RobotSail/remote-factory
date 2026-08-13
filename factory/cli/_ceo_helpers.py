@@ -233,7 +233,7 @@ def _validate_ceo_flags(
         if focus:
             print("Error: --refine and --focus are mutually exclusive.", file=sys.stderr)
             return 1
-        if not Path(raw_path).expanduser().resolve().is_dir():
+        if not raw_path or not Path(raw_path).expanduser().resolve().is_dir():
             print(
                 "Error: --refine requires an existing project directory, not a URL or idea.",
                 file=sys.stderr,
