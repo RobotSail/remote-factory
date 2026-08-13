@@ -248,14 +248,15 @@ WORKFLOW_META: dict[str, dict[str, str | list[str]]] = {
     },
     "deep-research": {
         "description": (
-            "Deep research mode — single-agent iterative research with built-in "
-            "faithfulness checking and coverage evaluation. The researcher performs "
-            "multiple rounds of WebSearch/WebFetch internally, following an inside-out "
-            "protocol: internal project state first, then external search shaped by "
-            "internal findings. Includes structural faithfulness checks (relevance, "
-            "grounding, drift detection) every iteration. "
-            "Runs study → deep_researcher → CEO coverage gate. "
-            "The coverage gate is a safety net — it should almost always PROCEED. "
+            "Deep research mode — decompose-then-research with built-in "
+            "faithfulness checking and coverage evaluation. A decomposer generates "
+            "3-5 research directions; the researcher executes them with multiple "
+            "rounds of WebSearch/WebFetch, following an inside-out protocol: "
+            "internal project state first, then external search shaped by internal "
+            "findings. Includes structural faithfulness checks (relevance, grounding, "
+            "drift detection) every iteration. "
+            "Runs study → decomposer → deep_researcher → CEO coverage gate. "
+            "The coverage gate checks per-direction coverage. "
             "Outputs research-combined.md only. "
             "Use when the user says 'deep research X', 'research X thoroughly', or wants "
             "comprehensive, faithful research with iterative deepening. "
