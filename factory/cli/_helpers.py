@@ -22,6 +22,14 @@ CEO_MODES = ["auto", "auto-fresh", "build", "discover", "founder", "improve", "m
 RUN_MODES = ["auto", "auto-fresh", "build", "discover", "founder", "improve", "meta", "parallel-improve", "research", "swebench", "frontend-design-scan"]
 
 
+def get_all_ceo_modes() -> list[str]:
+    """Return CEO_MODES plus any modes registered by plugins."""
+    from factory.plugins import get_registry
+
+    registry = get_registry()
+    return CEO_MODES + [m for m in registry.modes if m not in CEO_MODES]
+
+
 DEPRECATED_MODES: frozenset[str] = frozenset({
     "build", "improve", "research", "meta", "discover",
     "review", "refine", "parallel-improve", "interactive",
