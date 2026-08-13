@@ -203,6 +203,77 @@ class TestGetAllCeoModesIncludesPlugins:
             assert m in all_modes
 
 
+class TestAddParserExtensions:
+    def test_extension_stored(self):
+        registry = PluginRegistry()
+        ext_fn = MagicMock()
+        registry.add_parser_extensions({"ceo": ext_fn})
+        assert "ceo" in registry.parser_extensions
+        assert registry.parser_extensions["ceo"] == [ext_fn]
+
+    def test_multiple_extensions_same_subcommand(self):
+        registry = PluginRegistry()
+        ext_a = MagicMock()
+        ext_b = MagicMock()
+        registry.add_parser_extensions({"ceo": ext_a})
+        registry.add_parser_extensions({"ceo": ext_b})
+        assert registry.parser_extensions["ceo"] == [ext_a, ext_b]
+
+
+class TestAddParserExtensionsApplied:
+    def test_extension_called_on_build_parser(self):
+        ext_fn = MagicMock()
+
+        def plugin(reg: PluginRegistry):
+            reg.add_parser_extensions({"ceo": ext_fn})
+
+        ep = _make_ep("ext-plugin", load_return=plugin)
+        with patch("factory.plugins.importlib.metadata.entry_points") as mock_eps:
+            mock_eps.return_value = MagicMock()
+            mock_eps.return_value.select.return_value = [ep]
+            from factory.cli._main import build_parser
+
+            build_parser()
+
+        ext_fn.assert_called_once()
+        import argparse
+        assert isinstance(ext_fn.call_args[0][0], argparse.ArgumentParser)
+
+
+class TestCeoPreHookCalled:
+    def test_pre_hook_invoked(self):
+        hook = MagicMock(return_value=None)
+        registry = PluginRegistry()
+        registry.ceo_pre_hooks.append(hook)
+
+        with (
+            patch("factory.plugins.get_registry", return_value=registry),
+            patch("factory.cli.ceo._validate_ceo_flags") as mock_validate,
+            patch("factory.cli.ceo._resolve_ceo_project") as mock_resolve,
+            patch("factory.cli.ceo._validate_late_flags", return_value=None),
+            patch("factory.cli.ceo._execute_ceo", return_value=0),
+            patch("factory.user_config.load_config"),
+        ):
+            mock_validate.return_value = (
+                "improve", False, False, False, None, None, None, None, False, None, False,
+            )
+            mock_resolve.return_value = (
+                "/tmp/proj", None, None, None,
+                None, False, False, None, None,
+            )
+            from factory.cli.ceo import cmd_ceo
+
+            args = MagicMock()
+            args.path = "/tmp/proj"
+            args.profile = None
+            args.no_github = False
+            cmd_ceo(args)
+
+        hook.assert_called_once()
+        call_args = hook.call_args[0]
+        assert call_args[0] == "improve"
+
+
 class TestSandboxModeUnknownRole:
     def test_defaults_to_read_only(self):
         from factory.agents.plugin import _sandbox_mode

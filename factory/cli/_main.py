@@ -273,6 +273,25 @@ def build_parser() -> argparse.ArgumentParser:
             spec.add_arguments(p_plugin)
         p_plugin.set_defaults(_plugin_handler=spec.handler)
 
+    # ── plugin parser extensions ────────────────────────────────
+    sub_action: argparse._SubParsersAction | None = None  # type: ignore[type-arg]
+    for action in parser._subparsers._group_actions:
+        if isinstance(action, argparse._SubParsersAction):
+            sub_action = action
+            break
+
+    if sub_action is not None:
+        import structlog as _structlog
+
+        _ext_log = _structlog.get_logger()
+        for ext_name, ext_fns in _plugin_registry.parser_extensions.items():
+            ext_parser = sub_action._name_parser_map.get(ext_name)
+            if ext_parser is None:
+                _ext_log.warning("plugin_parser_extension_no_target", subcommand=ext_name)
+                continue
+            for ext_fn in ext_fns:
+                ext_fn(ext_parser)
+
     # graph — code knowledge graph operations
     graph_parser = sub.add_parser("graph", help="Code knowledge graph via graphify")
     graph_sub = graph_parser.add_subparsers(dest="graph_command")

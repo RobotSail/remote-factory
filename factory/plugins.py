@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib.metadata
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal
@@ -50,6 +51,9 @@ class PluginRegistry:
     modes: list[str] = field(default_factory=list)
     ceo_pre_hooks: list[Callable[..., Any]] = field(default_factory=list)
     workflow_search_paths: list[str] = field(default_factory=list)
+    parser_extensions: dict[str, list[Callable[[argparse.ArgumentParser], None]]] = field(
+        default_factory=dict
+    )
 
     def add_commands(self, commands: dict[str, CommandSpec]) -> None:
         for name, spec in commands.items():
@@ -75,6 +79,12 @@ class PluginRegistry:
 
     def add_ceo_pre_hook(self, hook: Callable[..., Any]) -> None:
         self.ceo_pre_hooks.append(hook)
+
+    def add_parser_extensions(
+        self, extensions: dict[str, Callable[[argparse.ArgumentParser], None]]
+    ) -> None:
+        for name, func in extensions.items():
+            self.parser_extensions.setdefault(name, []).append(func)
 
     def add_workflow_search_path(self, path: str) -> None:
         self.workflow_search_paths.append(path)
