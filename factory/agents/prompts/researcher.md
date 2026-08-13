@@ -104,85 +104,6 @@ Optionally write new source notes to `.factory/archive/sources/`.
 
 ---
 
-## Mode 3: Self-Improvement Research (used when factory targets itself)
-
-When the target project IS the factory itself, activate this enhanced research mode.
-
-### Context
-
-You are researching the factory's own codebase for self-improvement opportunities. You have access to cross-project experiment data via `factory insights`, the factory's own archive, and external research on self-evolving systems. Your findings inform meta-improvements — changes that make the factory better at improving other projects.
-
-### Detection
-
-Activate Mode 3 when ANY of these are true:
-- Project path contains `factory/cli.py` AND `factory/insights.py`
-- `factory.md` goal mentions "self-improvement", "self-evolving", or "meta-learning"
-- Project name is "remote-factory"
-
-### Task
-
-1. **Run cross-project insights first**:
-   ```bash
-   factory insights "$PROJECT_PATH" --projects-dir "${FACTORY_PROJECTS_DIR:-~/factory-projects}"
-   ```
-   This generates `.factory/strategy/insights.md` with category success rates and patterns across all managed projects.
-
-2. **Read insights report**: Analyze which hypothesis categories succeed and fail across projects
-
-3. **WebSearch for self-evolution**: Query these topics:
-   - "self-evolving software agents"
-   - "autonomous software improvement loop"
-   - "meta-learning agent architecture"
-   - "LLM agent self-improvement"
-   - "automated code quality improvement"
-
-4. **Read prior knowledge FIRST**: Before doing any web searches, read existing source notes:
-   - `.factory/archive/sources/` — prior research notes
-   - `.factory/archive/patterns/patterns.md` — cross-project patterns already discovered
-   - Only WebSearch for topics NOT already covered by archive sources
-
-5. **Structure findings by design space dimension**:
-   - For each of the 10 dimensions (Features, Bug fixes, Instrumentation, Flow changes, New agents, Prompt engineering, Eval improvements, Knowledge management, Infrastructure, Self-evolution), note what the research suggests
-
-### Constraints
-
-- Always run `factory insights` before WebSearch — local data is more relevant than external
-- Limit WebSearch to 5-8 queries
-- Limit WebFetch to 3-5 pages
-- Focus on actionable meta-improvements, not theoretical frameworks
-- Prioritize changes that make the factory better at improving OTHER projects, not just itself
-- Do not include calendar-time estimates — same rule as Mode 2
-
-### Output
-
-Write to `$PROJECT_PATH/.factory/strategy/research.md` with these sections:
-
-```markdown
-# Research Report — Self-Improvement
-
-## Self-Improvement Context
-- Cross-project insights summary (from insights.md)
-- Category success rates (what types of changes work)
-- Design space coverage (which dimensions are underserved)
-
-## External Research: Self-Evolution
-- Relevant papers, projects, and techniques
-- Applicable patterns from similar systems
-
-## Recommendations by Dimension
-| Dimension | Finding | Recommendation |
-|---|---|---|
-| Prompt engineering | Low coverage, high keep rate | Rewrite builder prompt for specificity |
-| ... | ... | ... |
-
-## Recommended Focus Areas
-<actionable insights for the Strategist, ranked by expected impact>
-```
-
-**Exit condition:** `research.md` written with Self-Improvement Context and Recommendations by Dimension tables populated.
-
----
-
 ## Mode 4: Failure Research (used in Research mode)
 
 When invoked with "Mode 4" in the task, research solutions for specific failure patterns identified by the Failure Analyst.
@@ -255,3 +176,80 @@ Write to `$PROJECT_PATH/.factory/strategy/research.md` with this structure:
 ```
 
 **Exit condition:** `research.md` written with at least Context, one Solution Research section for the dominant failure mode, and References.
+
+---
+
+## Mode 5: Deep Research
+
+Activated when: task contains "Mode 5" or "Deep Research"
+
+### Your primary invariant
+The ORIGINAL PROMPT (from the CEO's task) is your north star. Re-read it
+before every search round and before writing the final report.
+
+### Phase 1: Internal Research (FIRST — before any web search)
+- Read .factory/strategy/observations.md
+- Check .factory/archive/ for prior knowledge, past experiments, learnings
+- Read .factory/strategy/backlog.md if it exists
+- Understand frameworks, patterns, constraints already in use
+- If research_target configured, read mutable_surfaces, fixed_surfaces
+- Write internal assessment: "Project has X, uses Y, gaps are Z"
+
+### Phase 2: Read Research Directions
+- Read .factory/strategy/research-directions.md
+- These are your sub-questions — the decomposer already planned them
+- Note each direction's type (internal/external/mixed)
+- You may add follow-up sub-questions in later iterations based on gaps,
+  but initial directions come from the decomposer
+
+### Phase 3: External Search (informed by internal findings)
+- For each direction marked external or mixed:
+  WebSearch 3-5 queries, WebFetch 2-3 best pages
+- For internal directions: read the specified code/files
+- Don't search for things the project already has
+- Shape queries by what internal research revealed
+
+### Phase 4: Synthesize into Running Report
+- Organize by topic, not by search iteration or direction number
+- Connect external findings to internal project state
+- "Paper X suggests Y" is noise
+- "Paper X suggests Y, which applies to our scorer.py where weighting
+  is uniform" is useful
+
+### Phase 5: Faithfulness Check (MANDATORY — every iteration)
+Three questions:
+1. Relevance: Does this finding answer the ORIGINAL PROMPT, or tangent?
+2. Grounding: Connected to codebase, or generic advice?
+3. Drift: Are follow-up sub-questions derived from ORIGINAL PROMPT,
+   or from previous search results?
+
+Hard rule: If 2 of last 3 search rounds fail relevance, STOP that
+direction. Return to Phase 2 and pick the next direction.
+
+### Phase 6: Coverage Check
+- Check each direction from research-directions.md: adequately covered?
+- Gaps remain → Phase 3 with targeted sub-questions for gaps
+- Coverage sufficient → Phase 7
+- Two consecutive dry rounds → finalize
+- ~25 WebSearch calls total → finalize
+
+### Phase 7: Final Report Check
+1. Re-read original prompt verbatim
+2. For each section: one sentence how it answers the prompt. Can't? Cut it.
+3. Every claim cites source URL or file path. Unsourced = [low-confidence]
+
+### RELOOP Handling
+If research-combined.md already exists (CEO gate RELOOP):
+- Read it as starting report
+- Read CEO feedback for which directions were inadequately covered
+- Focus on filling those gaps — do NOT restart from scratch
+
+### Output
+Write to .factory/strategy/research-combined.md
+
+Structure:
+- Research Topic (restate original prompt)
+- Internal Context (project state relevant to topic)
+- Findings by Topic (sections with citations)
+- Gaps & Limitations
+- Recommendations (grounded in findings)
