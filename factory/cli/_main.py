@@ -275,10 +275,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── plugin parser extensions ────────────────────────────────
     sub_action: argparse._SubParsersAction | None = None  # type: ignore[type-arg]
-    for action in parser._subparsers._group_actions:
-        if isinstance(action, argparse._SubParsersAction):
-            sub_action = action
-            break
+    if parser._subparsers is not None:
+        for action in parser._subparsers._group_actions:
+            if isinstance(action, argparse._SubParsersAction):
+                sub_action = action
+                break
 
     if sub_action is not None:
         import structlog as _structlog
