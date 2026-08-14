@@ -22,8 +22,7 @@ Your testing scope is derived from the hypothesis deliverables. Test what was pl
 
 ## Prerequisites
 
-- The health check must have passed.
-- The code review must have found no critical issues.
+- You run in parallel with the health checker and code reviewer — do not wait for or depend on their results.
 - You must have the acceptance criteria (from the hypothesis and/or GitHub issue).
 
 ## Core principle: evidence for every test

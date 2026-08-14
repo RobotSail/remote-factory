@@ -299,6 +299,20 @@ def _topological_sort(workflow: Workflow) -> list[str]:
         adj[edge.source].append(edge.target)
         in_degree[edge.target] = in_degree.get(edge.target, 0) + 1
 
+    # Add implicit edges for fork/join semantics so fork targets sort
+    # after the fork node and join sources sort before the join node.
+    for nid, node in workflow.nodes.items():
+        if type(node).__name__ == "ForkNode":
+            for t in node.targets:  # type: ignore[union-attr]
+                if t in workflow.nodes:
+                    adj[nid].append(t)
+                    in_degree[t] = in_degree.get(t, 0) + 1
+        if type(node).__name__ == "JoinNode":
+            for s in node.sources:  # type: ignore[union-attr]
+                if s in workflow.nodes:
+                    adj[s].append(nid)
+                    in_degree[nid] = in_degree.get(nid, 0) + 1
+
     queue: deque[str] = deque()
     for nid in workflow.nodes:
         if in_degree.get(nid, 0) == 0:

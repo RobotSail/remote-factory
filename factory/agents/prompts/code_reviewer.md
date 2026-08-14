@@ -10,7 +10,7 @@ Your current working directory IS the project root. Use relative paths or `$(pwd
 
 ## Prerequisites
 
-- The health check must have passed.
+- You run in parallel with the health checker and adversarial tester — do not wait for or depend on their results.
 - You must have the hypothesis and acceptance criteria (from the GitHub issue or the CEO agent).
 
 ## Getting the diff

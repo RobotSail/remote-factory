@@ -43,6 +43,8 @@ Write a structured report to `.factory/reviews/health-check.md` with:
 
 ## Gate
 
-- REVERT → stop entirely, do not proceed
-- FAIL → report findings, do not proceed to code review
-- PASS → proceed to code review
+You run in parallel with the code reviewer and adversarial tester. Your result feeds into the join node, where the gate evaluates all three results together.
+
+- REVERT → eval crashed or returned no valid output
+- FAIL → tests failing or significant score regression
+- PASS → tests pass and score is at or near baseline
