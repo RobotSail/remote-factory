@@ -145,6 +145,46 @@ class TestClaudeRunner:
             ]
 
 
+class TestInteractiveBackupRestore:
+    def test_restores_backup_after_interactive_run(self, tmp_path: Path) -> None:
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        original_content = "# Original project CLAUDE.md"
+        (claude_dir / "CLAUDE.md").write_text(original_content)
+
+        runner = ClaudeRunner()
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = type("Result", (), {"returncode": 0})()
+            runner.interactive_run(
+                AgentRunRequest(
+                    prompt="Full prompt",
+                    prompt_core="Slim core",
+                    task="Test",
+                    cwd=tmp_path,
+                )
+            )
+
+        claude_md = claude_dir / "CLAUDE.md"
+        assert claude_md.exists()
+        assert claude_md.read_text() == original_content
+        assert not (claude_dir / "CLAUDE.md.factory-backup").exists()
+
+    def test_deletes_claude_md_when_no_backup(self, tmp_path: Path) -> None:
+        runner = ClaudeRunner()
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = type("Result", (), {"returncode": 0})()
+            runner.interactive_run(
+                AgentRunRequest(
+                    prompt="Full prompt",
+                    prompt_core="Slim core",
+                    task="Test",
+                    cwd=tmp_path,
+                )
+            )
+
+        assert not (tmp_path / ".claude" / "CLAUDE.md").exists()
+
+
 class TestTelemetryPlatformSuppression:
     def test_headless_sets_telemetry_platform_empty(self, tmp_path: Path) -> None:
         """ClaudeRunner.headless() sets TELEMETRY_PLATFORM='' to suppress native tracing."""
@@ -1966,7 +2006,25 @@ class TestClaudeBuildInteractiveCommand:
         for f in temp_files:
             f.unlink(missing_ok=True)
 
-    def test_writes_claude_md_with_prompt(self, tmp_path: Path) -> None:
+    def test_writes_claude_md_with_prompt_core(self, tmp_path: Path) -> None:
+        runner = ClaudeRunner()
+        _, _, temp_files = runner.build_interactive_command(
+            AgentRunRequest(
+                prompt="Full prompt content here.",
+                prompt_core="Slim core identity.",
+                task="Test",
+                cwd=tmp_path,
+            )
+        )
+
+        claude_md = tmp_path / ".claude" / "CLAUDE.md"
+        assert claude_md.exists()
+        assert claude_md.read_text() == "Slim core identity."
+
+        for f in temp_files:
+            f.unlink(missing_ok=True)
+
+    def test_falls_back_to_full_prompt_when_prompt_core_empty(self, tmp_path: Path) -> None:
         runner = ClaudeRunner()
         prompt = "You are the CEO.\n\n## Instructions\nDo great things."
         _, _, temp_files = runner.build_interactive_command(
@@ -1983,6 +2041,31 @@ class TestClaudeBuildInteractiveCommand:
 
         for f in temp_files:
             f.unlink(missing_ok=True)
+
+    def test_backs_up_existing_claude_md(self, tmp_path: Path) -> None:
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        original_content = "# Original project instructions"
+        (claude_dir / "CLAUDE.md").write_text(original_content)
+
+        runner = ClaudeRunner()
+        _, _, temp_files = runner.build_interactive_command(
+            AgentRunRequest(
+                prompt="Full prompt",
+                prompt_core="Slim core",
+                task="Test",
+                cwd=tmp_path,
+            )
+        )
+
+        backup = claude_dir / "CLAUDE.md.factory-backup"
+        assert backup.exists()
+        assert backup.read_text() == original_content
+        assert (claude_dir / "CLAUDE.md").read_text() == "Slim core"
+
+        for f in temp_files:
+            f.unlink(missing_ok=True)
+        backup.unlink(missing_ok=True)
 
     def test_creates_claude_dir_if_missing(self, tmp_path: Path) -> None:
         assert not (tmp_path / ".claude").exists()
