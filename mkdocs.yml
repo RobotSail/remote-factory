@@ -66,6 +66,7 @@ nav:
       - Architecture: architecture.md
       - Eval System: eval.md
       - Self-Improvement Loop: self-improvement.md
+      - Outer Loop: outer-loop.md
       - ACE Playbook Evolution: ace.md
   - Contained Runtimes: contained/index.md
   - Benchmarks: benchmarks.md
