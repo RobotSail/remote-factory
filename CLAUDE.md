@@ -143,7 +143,30 @@ ANTHROPIC_API_KEY = "sk-ant-..."
 - `factory config edit` — open `~/.factory/config.toml` in `$EDITOR`
 - `factory config migrate` — create starter config from current env vars (requires `tomli_w`)
 
-**Credential profiles:** Use `--profile <name>` with `factory ceo`, `factory run`, or `factory agent` to load a `[credentials.<name>]` section. Profile keys are injected into `os.environ`.
+**Credential profiles:** Use `--profile <name>` with `factory ceo`, `factory run`, or `factory agent` to load a `[credentials.<name>]` section. Profile keys **override** existing env vars (explicit `--profile` opt-in means the profile is authoritative). CLI flags still win via 5-tier precedence.
+
+**Env overlay features:**
+- **Override:** Profile keys are set via `os.environ[k] = v`, not `setdefault` — the profile wins over shell env vars
+- **Unset:** Add a `[credentials.<name>.unset]` sub-table with `vars = ["VAR1", "VAR2"]` to remove env vars before injection. Unsets are processed before sets.
+- **Protected vars:** The following env vars cannot be set or unset via profiles — a `ValueError` is raised if attempted: `PATH`, `HOME`, `USER`, `SHELL`, `TMPDIR`, `TERM`, `PWD` (shell fundamentals); `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_INSERT_LIBRARIES` (code execution vectors); `PYTHONPATH`, `GOPATH`, `CLASSPATH`, `NODE_PATH` (language path injection); `IFS` (shell parsing); `FACTORY_TRACE_ID`, `FACTORY_PARENT_SPAN_ID` (factory observability internals).
+- **Unset vars validation:** The `[credentials.<name>.unset].vars` field must be a list — a `ValueError` is raised if it is a string or other non-list type.
+- **Override warnings:** When a profile overrides an existing env var with a different value, a `log.warning("profile_override", key=k, profile=profile)` is emitted (values are not logged to avoid leaking secrets).
+
+**Custom endpoint example** (e.g. a LiteLLM proxy):
+
+You can use profiles to point the factory at a custom model endpoint:
+```toml
+[credentials.litellm-proxy]
+FACTORY_RUNNER = "claude"
+FACTORY_MODEL = "your-model-name"
+ANTHROPIC_BASE_URL = "https://your-litellm-proxy.example.com"
+ANTHROPIC_API_KEY = "your-api-key-here"
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
+
+[credentials.litellm-proxy.unset]
+vars = ["CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_BEDROCK", "ANTHROPIC_VERTEX_PROJECT_ID"]
+```
+Usage: `factory ceo /path --profile litellm-proxy`
 
 **Implementation:** `factory/user_config.py` — `load_config()`, `resolve()`, `show_config()`, `migrate_env_to_config()`.
 
