@@ -390,6 +390,27 @@ class TestStudyWorkflow:
         assert isinstance(node, AgentNode)
         assert node.role == AgentRole.RESEARCHER
 
+    def test_graph_explorer_prompt_includes_project_path_in_commands(self) -> None:
+        wf = study_standalone_workflow()
+        node = wf.nodes["graph_explorer"]
+        prompt = node.prompt_template
+        assert "test -f graph.json" in prompt, (
+            "smoke check must use relative path (CWD is project root)"
+        )
+        assert 'factory graph query "{project_path}"' in prompt, (
+            "graph query command must use {project_path} template"
+        )
+        assert 'factory graph explain "{project_path}"' in prompt, (
+            "graph explain command must use {project_path} template"
+        )
+        assert 'factory graph path "{project_path}"' in prompt, (
+            "graph path command must use {project_path} template"
+        )
+        assert "{project_path}/graph.json" in prompt, (
+            "prompt must reference graph.json with {project_path} prefix"
+        )
+        assert "NOT inside `.factory/`" in prompt, "prompt must clarify graph.json is not in .factory/"
+
     def test_concat_study_writes_combined(self) -> None:
         wf = study_standalone_workflow()
         node = wf.nodes["concat_study"]

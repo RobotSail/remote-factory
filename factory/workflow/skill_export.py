@@ -275,6 +275,16 @@ WORKFLOW_META: dict[str, dict[str, str | list[str]]] = {
         ),
         "argument_hint": "<project_path>",
     },
+    "outer-loop": {
+        "description": (
+            "Outer loop evolutionary search — evolve workflow DAGs against benchmarks. "
+            "Runs seed → evaluate → reflect → evolve → convergence gate with RELOOP. "
+            "Terminal mode — does not chain to other modes. "
+            "Use when the user says 'outer-loop', 'evolve workflows', or wants "
+            "evolutionary search for optimal workflow topologies."
+        ),
+        "argument_hint": "<project_path>",
+    },
 }
 
 
@@ -377,7 +387,9 @@ def _agent_to_instruction(
     default_timeout = node.timeout or (pool_entry.timeout if pool_entry else 600)
     model_flag = " --model haiku" if role == "archivist" else ""
 
-    prompt = node.prompt_template or f"Execute {role} task for the project."
+    prompt = (node.prompt_template or f"Execute {role} task for the project.").replace(
+        "{project_path}", "$PROJECT_PATH",
+    )
 
     if node.reads:
         reads_str = ", ".join(sorted(node.reads))
@@ -616,6 +628,12 @@ def _gate_to_checkpoint(
                 lines.append(
                     f"- **HALT** (exit non-zero / FAIL in output) → "
                     f"continue to `{halt_target}` instead."
+                )
+            elif reloop_edges:
+                reloop_target = reloop_edges[0].target
+                lines.append(
+                    f"- **RELOOP** (exit non-zero / FAIL in output) → "
+                    f"return to `{reloop_target}` for the next iteration."
                 )
             else:
                 lines.append(

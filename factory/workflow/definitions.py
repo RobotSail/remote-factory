@@ -89,15 +89,25 @@ DOC_FRESHNESS_GATE_PROMPT = (
 _GRAPH_EXPLORER_PROMPT = (
     "Explore the project's code knowledge graph to build structural understanding. "
     "Read .factory/strategy/observations.md for focus context.\n\n"
-    "If graphify is installed and graph.json exists:\n"
-    '1. Run `factory graph query "<focus from observations>" --depth 2` to find relevant nodes\n'
-    '2. Run `factory graph explain "<key node>"` on the most important nodes to understand '
-    "their connections and dependencies\n"
-    '3. Run `factory graph path "<A>" "<B>"` to trace dependency paths between key components\n'
+    "**Step 0 — detect graph availability:** Your working directory is already "
+    "the project root. The graph file lives at `{project_path}/graph.json` "
+    "(NOT inside `.factory/`). "
+    "Run this smoke check FIRST — use a relative path since your CWD is the "
+    "project root: "
+    "`test -f graph.json && echo 'GRAPH AVAILABLE' || echo 'NO GRAPH'` — "
+    "if the output says GRAPH AVAILABLE, proceed with the graph commands below. "
+    "If the output says NO GRAPH, skip to the fallback section.\n\n"
+    "**If the graph IS available:**\n"
+    '1. Run `factory graph query "{project_path}" "<focus from observations>" --depth 2` '
+    "to find relevant nodes\n"
+    '2. Run `factory graph explain "{project_path}" "<key node>"` on the most important '
+    "nodes to understand their connections and dependencies\n"
+    '3. Run `factory graph path "{project_path}" "<A>" "<B>"` to trace dependency paths '
+    "between key components\n"
     "4. Write structured findings to .factory/strategy/graph-context.md covering: "
     "key modules and their relationships, dependency paths, architectural layers, "
     "entry points and hotspots\n\n"
-    "If graphify is NOT installed or graph.json is missing, fall back to direct file exploration:\n"
+    "**If the graph is NOT available**, fall back to direct file exploration:\n"
     "1. Use `find . -name '*.py' | head -50` to discover source files\n"
     "2. Use `grep -rn 'class \\|def ' --include='*.py' | head -100` to map functions and classes\n"
     "3. Use `grep -rn 'import ' --include='*.py' | head -100` to trace dependencies\n"
@@ -4142,6 +4152,9 @@ def _get_builtin_registry() -> dict[str, Any]:
         ).workflow(),
         "devopsgym": lambda: __import__(
             "factory.workflow.contributed.devopsgym", fromlist=["workflow"]
+        ).workflow(),
+        "outer-loop": lambda: __import__(
+            "factory.workflow.contributed.outer_loop", fromlist=["workflow"]
         ).workflow(),
     }
     return _BUILTIN_REGISTRY
