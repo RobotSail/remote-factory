@@ -232,9 +232,13 @@ def _vulture_scan(project_path: Path) -> list[dict]:
 
     try:
         v = vulture.Vulture()
-        v.scavenge([str(project_path)], exclude=[".factory", "__pycache__", ".git", "node_modules"])
+        v.scavenge([str(project_path)], exclude=["__pycache__", ".git", "node_modules"])
+        factory_dir = project_path / ".factory"
         results: list[dict] = []
         for item in v.get_unused_code():
+            item_path = Path(item.filename).resolve()
+            if factory_dir.exists() and item_path.is_relative_to(factory_dir):
+                continue
             rel_path = str(item.filename)
             try:
                 rel_path = str(Path(item.filename).relative_to(project_path))
