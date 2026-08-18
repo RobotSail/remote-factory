@@ -499,7 +499,7 @@ def _execute_ceo(
     just_plan: bool = False,
 ) -> int:
     """Set up worktree, build task, and run the CEO agent."""
-    from factory.agents.runner import begin_cycle_session, complete_cycle_session, resolve_prompt
+    from factory.agents.runner import begin_cycle_session, complete_cycle_session, resolve_prompt, resolve_prompt_core
     from factory.runners import get_runner
     from factory.runners.claude import _make_ceo_message_emitter
     from factory.worktree import create_worktree, prune_stale, remove_worktree
@@ -753,9 +753,11 @@ def _execute_ceo(
         extras: dict[str, object] = {}
         if _verification_settings_file:
             extras["settings_file"] = _verification_settings_file
+        prompt_core = resolve_prompt_core()
         return runner.interactive_run(
             _RunReq(
                 prompt=prompt,
+                prompt_core=prompt_core,
                 task=task,
                 cwd=wt_path,
                 model=model,
