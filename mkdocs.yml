@@ -32,6 +32,9 @@ theme:
   icon:
     repo: fontawesome/brands/github
 
+hooks:
+  - hooks/link_rewrite.py
+
 extra_css:
   - stylesheets/extra.css
 
