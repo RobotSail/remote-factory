@@ -22,7 +22,7 @@ It solves these operational problems:
 - It **tracks experiment outcomes as append-only history** instead of losing context on what was tried, why it was reverted, and what was learned
 - It **enforces eval-driven decisions** through weighted composite scores across hygiene, growth, and project-specific dimensions instead of subjective "looks good" judgments
 - It **preserves cross-project knowledge** in a structured archive instead of requiring each project to re-learn the same patterns and anti-patterns
-- It **supports pluggable CLI backends** (Claude Code, Bob Shell, OpenAI Codex, OpenCode) through a runner abstraction instead of hard-coding a single LLM provider
+- It **supports pluggable CLI backends** (Claude Code) through a runner abstraction instead of hard-coding a single LLM provider
 
 **Important boundary:** re:factory is NOT responsible for training models, hosting infrastructure, or managing authentication to LLM providers. It delegates to authenticated CLI tools and expects the user to configure credentials externally.
 
@@ -38,7 +38,7 @@ It solves these operational problems:
 - Apply FEEC priority heuristic (Fix > Exploit > Explore > Combine) to classify hypotheses and detect stuck patterns after 3+ consecutive same-category reverts
 - Maintain cross-project knowledge archives (patterns, decisions, experiments) for domain transfer
 - Evolve agent playbooks automatically via ACE (Autonomous Capability Evolution) based on performance reports
-- Support multiple CLI backends (Claude Code, Bob Shell, OpenAI Codex, OpenCode) through a runner abstraction
+- Support multiple CLI backends (Claude Code) through a runner abstraction
 - Enable research mode with inner/outer loop plateau detection, adversarial GAN-style eval loops, and mutable/fixed surface constraints
 
 ### 2.2 Non-Goals
@@ -811,7 +811,7 @@ See Section 6.2 for full `FactoryConfig` schema. Key fields:
 ### 13.3 Secret Handling
 
 **Secret sources:**
-- Environment variables (`ANTHROPIC_API_KEY`, `CODEX_API_KEY`, `FACTORY_RUNNER`, etc.)
+- Environment variables (`ANTHROPIC_API_KEY`, `FACTORY_RUNNER`, etc.)
 - Credential profiles in `~/.factory/config.toml`
 - `.env` files in the project directory (if present)
 
