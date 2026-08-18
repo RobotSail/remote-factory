@@ -85,6 +85,25 @@ def generate_agent_content(role: str) -> str:
     )
 
 
+_READ_ONLY_ROLES = frozenset({
+    "researcher", "failure_analyst", "refiner", "profiler",
+    "health_checker", "code_reviewer",
+})
+_WORKSPACE_WRITE_ROLES = frozenset({
+    "builder", "archivist", "ceo", "strategist", "refactory",
+    "adversarial_tester",
+})
+
+
+def _sandbox_mode(role: str) -> str:
+    """Map agent role to Codex sandbox mode."""
+    if role in _READ_ONLY_ROLES:
+        return "read-only"
+    if role in _WORKSPACE_WRITE_ROLES:
+        return "workspace-write"
+    return "read-only"
+
+
 def check_agents_in_sync(agents_dir: Path | None = None) -> list[str]:
     """Compare generated agent files against what's on disk.
 
