@@ -2,20 +2,21 @@
   <img src="https://raw.githubusercontent.com/akashgit/remote-factory/main/docs/assets/refactory_logo.png" alt="re:factory" width="480">
 </p>
 
+
 [![CI](https://github.com/akashgit/remote-factory/actions/workflows/ci.yml/badge.svg)](https://github.com/akashgit/remote-factory/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/akashgit/remote-factory/graph/badge.svg)](https://codecov.io/gh/akashgit/remote-factory)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/akashgit/remote-factory/blob/main/LICENSE)
 [![Runner: Claude Code](https://img.shields.io/badge/runner-Claude_Code-7c3aed)](https://docs.anthropic.com/en/docs/claude-code)
 [![Runner: Bob Shell](https://img.shields.io/badge/runner-Bob_Shell-f59e0b)](https://bob.ibm.com)
 [![Runner: OpenAI Codex](https://img.shields.io/badge/runner-OpenAI_Codex-10a37f)](https://openai.com/index/codex/)
 [![Docs](https://img.shields.io/badge/docs-akashgit.github.io-blue)](https://akashgit.github.io/remote-factory/)
 
-# re:factory
+<p align="center"><b><a href="https://akashgit.github.io/remote-factory/">Full Documentation</a></b></p>
 
-**Describe what you want. re:factory builds it, tests it, and keeps improving it — autonomously.**
+**Describe what you want — re:factory designs and builds it.** Brainstorm an idea from scratch, refine a plan for an existing project, or create entirely new factory modes.
 
-You give it a spec file, a rough idea, or an existing codebase. re:factory researches best practices, scaffolds the project, sets up evaluation, and runs a continuous improvement loop — measuring every change and keeping only what makes things better. The agents that do this work learn from every experiment and get sharper over time.
+All state is local — per-project in `.factory/` (add to `.gitignore`), global in `~/.factory/`. See [Architecture](architecture.md) for the full deep-dive.
 
 ```bash
 # Design — brainstorm an idea, refine it, then build
@@ -34,18 +35,20 @@ factory ceo ~/my-project
 factory ceo ~/my-project --focus "add WebSocket support"
 ```
 
+---
+
 ## How It Works
 
 ```mermaid
 graph LR
-    A["🔍 Researcher<br><i>observe</i>"] --> B["🎯 Strategist<br><i>hypothesize</i>"]
-    B --> C["🔨 Builder<br><i>implement</i>"]
-    C --> RV["🛡️ Reviewer<br><i>guard</i>"]
-    RV --> D["📊 Evaluator<br><i>measure</i>"]
+    A["Researcher<br><i>observe</i>"] --> B["Strategist<br><i>hypothesize</i>"]
+    B --> C["Builder<br><i>implement</i>"]
+    C --> RV["Reviewer<br><i>guard</i>"]
+    RV --> D["Evaluator<br><i>measure</i>"]
     D --> E{"CEO<br><i>decide</i>"}
-    E -- "score ↑" --> F["✅ KEEP"]
-    E -- "score ↓" --> G["↩️ REVERT"]
-    F --> H["📝 Archivist<br><i>record</i>"]
+    E -- "score up" --> F["KEEP"]
+    E -- "score down" --> G["REVERT"]
+    F --> H["Archivist<br><i>record</i>"]
     G --> H
     H -.-> A
 
@@ -60,6 +63,8 @@ A CEO agent orchestrates eight specialists — Researcher, Strategist, Builder, 
 
 ## Design Mode
 
+### Design — brainstorm before building
+
 Design mode is the primary way to use re:factory. It researches the space, drafts a structured plan via the Strategist, and lets you iterate on it before any code is written.
 
 **From a raw idea** — describe what you want and refine it into a buildable spec:
@@ -69,7 +74,9 @@ factory ceo "distributed eval runner" --mode design
 factory ceo "Build a REST API for bookmark management" --mode design
 ```
 
-**From a spec file** — read and discuss before building:
+**From a spec file** — for longer, more detailed descriptions, write your idea to a `.md` file and pass the path:
+
+> **Tip:** For detailed ideas with multiple paragraphs, requirements, or research notes, use a spec file instead of a quoted string. There's no length limit on file content.
 
 ```bash
 factory ceo ~/ideas/weather-dashboard.md --mode design
@@ -279,13 +286,15 @@ re:factory is a three-layer system:
 
 **Layer 2 — CEO Agent** (`factory/agents/prompts/ceo.md`): The orchestrator. Detects project state, spawns specialist agents, and makes the keep/revert decision for each experiment. Mode-specific playbooks are auto-generated from workflow graph definitions.
 
-**Layer 3 — Specialist Agents** (`factory/agents/`): Eight independent Claude Code subprocesses — Researcher, Strategist, Builder, Reviewer, Evaluator, Archivist, Refiner, and Failure Analyst. Each has a focused prompt, receives context from the CEO, and returns structured output.
+**Layer 3 — Specialist Agents** (`factory/agents/`): Eight independent Claude Code subprocesses — Researcher, Strategist, Builder, Reviewer, Evaluator, Archivist, Refiner, and Failure Analyst. Each has a focused prompt, receives context from the CEO, and returns structured output. Agent prompts support per-project overrides via `.factory/agents/<role>.md`.
+
+Data flows down: the CEO calls the CLI for eval, store, and guard operations. Agents call nothing — they produce text that the CEO interprets.
 
 See [Architecture](architecture.md) for the full deep-dive.
 
 ---
 
-## The Eval System
+## Eval System
 
 ```mermaid
 graph LR
@@ -299,12 +308,12 @@ graph LR
         P1["your custom metrics<br>benchmarks · latency<br>accuracy · win rate"]
     end
 
-    hygiene --> M["⚖️ Weighted<br>Composite"]
+    hygiene --> M["Weighted<br>Composite"]
     growth --> M
     project --> M
-    M --> S{"score ≥<br>threshold?"}
-    S -- "yes" --> K["✅ Keep"]
-    S -- "no" --> R["↩️ Revert"]
+    M --> S{"score >=<br>threshold?"}
+    S -- "yes" --> K["Keep"]
+    S -- "no" --> R["Revert"]
 
     style hygiene fill:#e8eaf6,stroke:#5c6bc0
     style growth fill:#fff3e0,stroke:#ff8f00
@@ -313,13 +322,15 @@ graph LR
     style R fill:#e53935,color:#fff
 ```
 
+Every change is measured by a composite score across three tiers:
+
 | Tier | What it measures | Examples |
 |------|-----------------|---------|
-| **Hygiene** (6 dimensions) | Code quality basics | Tests, lint, type checking, coverage |
-| **Growth** (5 dimensions) | Capability evolution | API surface area, experiment diversity, observability |
+| **Hygiene** (6 dimensions) | Code quality basics | Tests, lint, type checking, coverage, guards, config |
+| **Growth** (5 dimensions) | Capability evolution | API surface area, experiment diversity, observability, research effectiveness |
 | **Project** (user-defined) | Domain-specific metrics | Benchmark accuracy, latency, win rate |
 
-On first run, `factory discover` auto-detects your project's language and framework to generate the eval profile. See [Eval System](eval.md) for scoring details, weights, and guards.
+On first run, `factory discover` auto-detects your project's language and framework to generate the eval profile. The weighted composite of all dimensions determines whether each experiment is kept or reverted. See [Eval System](eval.md) for scoring details, weights, and guards.
 
 ---
 
@@ -389,6 +400,120 @@ Run `factory config show` to see resolved config, or `factory config edit` to op
 
 ---
 
+## LLM Tracing (LangFuse)
+
+LangFuse provides LLM observability and tracing — track agent invocations, token usage, and execution flow across all factory runs.
+
+### Quick Start
+
+```bash
+# Start LangFuse services
+scripts/langfuse-setup start
+
+# Set the env vars the factory needs
+export LANGFUSE_HOST=http://localhost:3000
+export LANGFUSE_BASE_URL=http://localhost:3000
+export LANGFUSE_PUBLIC_KEY=pk-lf-dev-local-key
+export LANGFUSE_SECRET_KEY=sk-lf-dev-local-key
+export TELEMETRY_PLATFORM=langfuse
+```
+
+The dev credentials above match the docker-compose setup. Add them to your `~/.bashrc` or `~/.zshrc` to persist across sessions.
+
+### Viewing Traces
+
+1. Start LangFuse: `scripts/langfuse-setup start`
+2. Run the factory: `factory ceo /path/to/project`
+3. Open `http://localhost:3000` in your browser
+4. Login: `dev@localhost.local` / `devpassword123`
+
+### CLI Commands
+
+```bash
+scripts/langfuse-setup start    # Start LangFuse services
+scripts/langfuse-setup stop     # Stop services
+scripts/langfuse-setup status   # Show status and credentials
+```
+
+### Requirements
+
+- **Docker** or **Podman** — any of `docker compose`, `docker-compose`, or `podman-compose` works
+
+### Disabling Tracing
+
+To disable tracing without stopping LangFuse:
+```bash
+export LANGFUSE_TRACING_ENABLED=false
+```
+
+For LLM connection setup, trace structure details, and troubleshooting, see [`infra/langfuse/README.md`](https://github.com/akashgit/remote-factory/blob/main/infra/langfuse/README.md).
+
+---
+
+## Install as a Claude Code Plugin
+
+re:factory is also distributed as a fully-bundled [Claude Code plugin](https://docs.claude.com/en/docs/claude-code/plugins) — agents, skills, and slash commands packaged together. A GitHub Actions workflow rebuilds the `plugins` branch of this repo on every push to `main`, so it always tracks the latest generated artifacts.
+
+From inside Claude Code:
+
+```text
+/plugin marketplace add akashgit/remote-factory#plugins
+/plugin install factory@remote-factory
+/reload-plugins
+```
+
+Once installed, the plugin exposes:
+
+- The `/factory:implement` slash command (entry point for the multi-agent pipeline).
+- Namespaced subagents — invoke with `factory:ceo`, `factory:researcher`, `factory:builder`, etc.
+- The bundled skills under `.agents/skills/` (e.g. `pipeline-subagents`, `implement`).
+
+The plugin still shells out to the `factory` CLI for the heavy lifting, so you'll need the `factory` package installed globally as described in [Quick Start](#quick-start).
+
+To update later: `/plugin marketplace update remote-factory`. To remove: `/plugin uninstall factory@remote-factory`.
+
+---
+
+## Plugin Agents
+
+If you'd rather skip the marketplace and just register the specialist agents as standalone Claude Code (or Codex) subagents, use the built-in installer:
+
+```bash
+factory install                   # Install all 9 agents to ~/.claude/agents/
+factory install --runner codex    # Or install Codex TOML agents to ~/.codex/agents/
+claude --agent factory-ceo "improve this project"
+claude --agent factory-researcher "study the auth system"
+```
+
+This path only ships the agent prompts (no skills, no slash commands) and is independent of the plugin marketplace install above.
+
+---
+
+## Verified Skill Generation
+
+Workflow graphs (Pydantic definitions) are converted to SKILL.md prose files that the CEO follows at runtime. This conversion goes through a verified pipeline to prevent information loss:
+
+```
+Workflow (Pydantic) → templatize → review agent → guard → split
+                         |              |           |        |
+                    {{slot::default}}   opus    structural   SKILL.md +
+                    + annotations     refines    diff check  annotations.yaml
+```
+
+The pipeline produces two artifacts per workflow:
+- **SKILL.md** — clean prose the CEO reads at runtime
+- **SKILL.annotations.yaml** — structured metadata per node for programmatic verification
+
+Regenerate all skills after changing workflow definitions:
+
+```bash
+factory workflow export-skills
+```
+
+A regression test (`test_annotations_match_source`) runs in CI to catch drift between workflow definitions and exported skills.
+
+---
+
 ## Documentation
 
 | Doc | What's in it |
@@ -406,9 +531,9 @@ Run `factory config show` to see resolved config, or `factory config edit` to op
 
 ```bash
 uv sync --all-groups              # Install all deps including dev
-uv run pytest -v                  # Full test suite
-uv run ruff check .               # Lint
-uv run mypy factory/              # Type check
+pytest -v                         # Full test suite
+ruff check .                      # Lint
+mypy factory/                     # Type check
 ```
 
 ## License
