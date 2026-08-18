@@ -2,14 +2,45 @@
 
 from __future__ import annotations
 
+import atexit
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import structlog
 
 log = structlog.get_logger()
+
+_telemetry_buffer: list[dict[str, Any]] = []
+_telemetry_flush_registered: bool = False
+
+
+def _maybe_buffer_telemetry(event: dict[str, Any]) -> None:
+    try:
+        from factory.telemetry_consent import is_telemetry_enabled
+        if not is_telemetry_enabled():
+            return
+        _telemetry_buffer.append(event)
+    except Exception:
+        pass
+
+
+def flush_telemetry() -> None:
+    if not _telemetry_buffer:
+        return
+    try:
+        from factory.telemetry_consent import is_telemetry_enabled
+        if not is_telemetry_enabled():
+            _telemetry_buffer.clear()
+            return
+        from factory.telemetry_client import submit_async
+        from factory.telemetry_collector import summarize_session
+        summary = summarize_session(list(_telemetry_buffer))
+        _telemetry_buffer.clear()
+        submit_async(summary)
+    except Exception:
+        _telemetry_buffer.clear()
 
 
 def emit_event(
@@ -20,10 +51,12 @@ def emit_event(
     data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Append a structured event to .factory/events.jsonl. Returns the event dict."""
+    global _telemetry_flush_registered
+
     project_path = project_path.resolve()
     event = {
         "type": event_type,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "project": project_path.name,
         "agent": agent,
         "data": data or {},
@@ -36,6 +69,12 @@ def emit_event(
 
     with open(events_file, "a") as f:
         f.write(json.dumps(event) + "\n")
+
+    _maybe_buffer_telemetry(event)
+
+    if not _telemetry_flush_registered:
+        atexit.register(flush_telemetry)
+        _telemetry_flush_registered = True
 
     log.debug("event_emitted", type=event_type, project=project_path.name, agent=agent)
     return event

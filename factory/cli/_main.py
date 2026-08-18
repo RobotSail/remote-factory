@@ -7,7 +7,6 @@ import sys
 
 from factory.cli._helpers import _load_env_local
 
-
 _REFACTORY_AGENT_COMMANDS: frozenset[str] = frozenset(
     {
         "ceo",
@@ -105,7 +104,7 @@ _COMMAND_GROUPS: list[tuple[str, list[str]]] = [
             "backfill-archive",
         ],
     ),
-    ("Self-Evolution", ["ace", "ace-stats", "digest", "workflow", "graph", "mempalace", "outer-loop"]),
+    ("Self-Evolution", ["ace", "ace-stats", "digest", "workflow", "graph", "mempalace", "outer-loop", "dead-code"]),
     (
         "Configuration",
         [
@@ -117,6 +116,7 @@ _COMMAND_GROUPS: list[tuple[str, list[str]]] = [
             "plugins",
             "usage",
             "serve-mcp",
+            "telemetry",
         ],
     ),
     (
@@ -220,6 +220,8 @@ def _cmd_plugins(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from importlib.metadata import version as pkg_version
+
     from factory.cli._parser_groups import (
         add_archive_parsers,
         add_backlog_refinement_parsers,
@@ -231,8 +233,6 @@ def build_parser() -> argparse.ArgumentParser:
         add_self_evolution_parsers,
         add_validation_recovery_parsers,
     )
-
-    from importlib.metadata import version as pkg_version
 
     parser = _GroupedHelpParser(
         prog="factory",
@@ -294,6 +294,28 @@ def build_parser() -> argparse.ArgumentParser:
                 continue
             for ext_fn in ext_fns:
                 ext_fn(ext_parser)
+
+    # telemetry — consent and status management
+    telemetry_parser = sub.add_parser("telemetry", help="Manage anonymous telemetry (status/enable/disable)")
+    telemetry_sub = telemetry_parser.add_subparsers(dest="telemetry_action")
+    telemetry_sub.add_parser("status", help="Show telemetry consent state and endpoint config")
+    telemetry_sub.add_parser("enable", help="Enable anonymous telemetry")
+    telemetry_sub.add_parser("disable", help="Disable anonymous telemetry")
+
+    # dead-code — dead code analysis
+    p_dead_code = sub.add_parser("dead-code", help="Analyze project for dead/unused code")
+    p_dead_code.add_argument("path", help="Path to the project")
+    p_dead_code.add_argument("--json", action="store_true", default=False,
+                             help="Output as structured JSON (full DeadCodeReport)")
+    p_dead_code.add_argument("--min-confidence", choices=["high", "medium", "low"],
+                             default="medium", help="Minimum confidence tier (default: medium)")
+    p_dead_code.add_argument("--output", default=None, help="Write report to file instead of stdout")
+    p_dead_code.add_argument("--include-whitelisted", action="store_true", default=False,
+                             help="Include symbols matching whitelist patterns")
+    p_dead_code.add_argument("--include-usage", action="store_true", default=True,
+                             help="Include telemetry-based usage candidates (default: on)")
+    p_dead_code.add_argument("--no-include-usage", action="store_false", dest="include_usage",
+                             help="Exclude telemetry-based usage candidates")
 
     # graph — code knowledge graph operations
     graph_parser = sub.add_parser("graph", help="Code knowledge graph via graphify")
@@ -439,6 +461,8 @@ def main(argv: list[str] | None = None) -> int:
         "outer-loop": lambda a: __import__(
             "factory.cli.outer_loop", fromlist=["cmd_outer_loop"]
         ).cmd_outer_loop(a),
+        "telemetry": _cli.cmd_telemetry,
+        "dead-code": _cli.cmd_dead_code,
         "mempalace": _cli.cmd_mempalace,
         "graph": lambda a: {
             "extract": _cli.cmd_graph_extract,

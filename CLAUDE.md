@@ -115,6 +115,8 @@ Eight specialist Claude Code subprocesses spawned by the CEO via `factory agent 
 9. **Analysis** (`factory/analysis.py`): Experiment comparison (`diff`) and FEEC analysis (`explain`)
 10. **Adversarial** (`factory/adversarial.py`): GAN-style adversarial eval loop state machine — phase transitions with hysteresis, per-role streak counters, convergence detection. State persisted at `.factory/adversarial_state.json`
 11. **Contained** (`factory/contained/` + `factory/podman.py` + `factory/cli/contained.py`): `factory contained [runtime flags] -- <any factory command>` runs the factory in a podman container (`--target local`) or a cluster pod (`--target k8s`). See "Contained runtimes" below.
+12. **Telemetry** (`factory/telemetry_consent.py`, `factory/telemetry_collector.py`, `factory/telemetry_client.py`): Opt-in anonymous telemetry — consent management (DO_NOT_TRACK, FACTORY_TELEMETRY env vars, `~/.factory/telemetry_consent.json`), PII-stripping event summarizer (hard allowlist), fire-and-forget HTTP submission via httpx. CLI: `factory telemetry status|enable|disable`
+13. **Dead Code** (`factory/eval/dead_code.py`, `factory/eval/dead_code_whitelist.py`): 2-layer dead-code analysis — structural (AST reachability + Vulture) and usage (telemetry consumption). Dynamic-dispatch whitelist for false-positive suppression. Opt-in eval dimension via `factory.md` `## Project Eval`. CLI: `factory dead-code <path>`
 
 ### Target project's `.factory/` layout
 
@@ -337,6 +339,17 @@ factory outer-loop evolve /path --generation 0                    # Produce next
 factory outer-loop status /path                                   # Show progress and metrics
 factory outer-loop status /path --check-converge                  # Exit 0 if converged, 1 if not
 factory outer-loop promote /path --mode-name evolve-gen5-abc12345 --permanent-name best-evolved
+
+# Dead code analysis
+factory dead-code /path/to/project                     # Analyze for dead/unused code
+factory dead-code /path/to/project --json              # Structured JSON output
+factory dead-code /path/to/project --min-confidence high  # Only high-confidence candidates
+factory dead-code /path/to/project --include-whitelisted  # Show whitelisted symbols too
+
+# Telemetry management
+factory telemetry status                               # Show consent state & endpoint config
+factory telemetry enable                               # Enable anonymous telemetry
+factory telemetry disable                              # Disable anonymous telemetry
 
 # Operations
 factory dashboard --projects-dir ~/factory-projects    # Live web dashboard on :8420

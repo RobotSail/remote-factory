@@ -9,7 +9,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
 # ── project state ─────────────────────────────────────────────────
 
 
@@ -619,3 +618,119 @@ class AgentRunResult(BaseModel):
     return_code: int
     usage: AgentUsage | None = None
     metadata: dict[str, object] = {}
+
+
+# ── telemetry ───────────────────────────────────────────────────
+
+
+class TelemetryConsent(BaseModel):
+    """Persisted consent state at ~/.factory/telemetry_consent.json."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    enabled: bool
+    consented_at: str | None = None
+    version: int = 1
+
+
+class TelemetryEvent(BaseModel):
+    """A single PII-stripped telemetry event."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    command: str = ""
+    event_type: str = ""
+    success: bool = True
+    duration_seconds: float | None = None
+    agent_role: str | None = None
+    workflow_mode: str | None = None
+    runner: str | None = None
+    timestamp: str = ""
+
+
+class TelemetrySessionSummary(BaseModel):
+    """Aggregated PII-stripped session summary ready for submission."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    session_id: str
+    factory_version: str
+    events: list[TelemetryEvent] = []
+    started_at: str = ""
+    ended_at: str = ""
+
+
+class TelemetryEndpoint(BaseModel):
+    """Telemetry submission endpoint configuration."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    url: str
+    timeout_seconds: int = 5
+    retry_count: int = 1
+
+
+# ── dead code analysis ──────────────────────────────────────────
+
+
+class DeadCodeCandidate(BaseModel):
+    """A symbol flagged as potentially dead code."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    symbol_name: str
+    file_path: str
+    line: int | None = None
+    confidence: Literal["high", "medium", "low"]
+    layers_flagged: list[str] = []
+    reachability_evidence: str = ""
+    whitelisted: bool = False
+    whitelist_reason: str | None = None
+    coverage_hit: bool | None = None
+
+
+class UsageCandidate(BaseModel):
+    """A capability with zero telemetry invocations — advisory deprecation signal."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    capability_name: str
+    capability_type: Literal["cli_command", "agent_role", "workflow_mode", "eval_dimension"]
+    last_invoked: str | None = None
+    invocation_count: int = 0
+    window_days: int = 90
+
+
+class DeadCodeSummary(BaseModel):
+    """Aggregate statistics for a dead-code report."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    total_symbols: int = 0
+    dead_candidates: int = 0
+    high_confidence: int = 0
+    medium_confidence: int = 0
+    low_confidence: int = 0
+    whitelisted_count: int = 0
+    usage_dead_count: int = 0
+    score: float = 1.0
+
+
+class DeadCodeReport(BaseModel):
+    """Complete dead-code analysis report."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    candidates: list[DeadCodeCandidate] = []
+    usage_candidates: list[UsageCandidate] = []
+    summary: DeadCodeSummary = DeadCodeSummary()
+
+
+class WhitelistPattern(BaseModel):
+    """A pattern for suppressing false-positive dead-code reports."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    pattern_type: Literal["literal_name", "regex", "decorator", "module_glob"]
+    pattern: str
+    reason: str = ""

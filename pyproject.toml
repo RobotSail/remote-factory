@@ -16,6 +16,8 @@ dependencies = [
     "anthropic[vertex]>=0.52",
     "mempalace>=3.6.0",
     "graphifyy>=0.9",
+    "httpx>=0.27",
+    "vulture>=2.0",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
