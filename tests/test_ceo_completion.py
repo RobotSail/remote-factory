@@ -107,18 +107,7 @@ class TestCycleState:
 
 
 class TestBudgetAllowsRespawn:
-    """Tests for _budget_allows_respawn().
-
-    With only per-cycle limits (no daily/session limit), respawn is always allowed.
-    Per-cycle limits are enforced within BobRunner during execution.
-    """
-
-    def test_bob_always_allowed(self, tmp_path: Path) -> None:
-        from factory.ceo_completion import _budget_allows_respawn
-
-        (tmp_path / ".factory").mkdir()
-        # Always returns True - per-cycle limits are enforced within BobRunner
-        assert _budget_allows_respawn("bob", tmp_path) is True
+    """Tests for _budget_allows_respawn()."""
 
     def test_claude_always_allowed(self, tmp_path: Path) -> None:
         from factory.ceo_completion import _budget_allows_respawn

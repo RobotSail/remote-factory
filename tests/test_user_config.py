@@ -651,8 +651,8 @@ class TestMigrateEnvToConfigMocked:
         for key in (
             "FACTORY_RUNNER", "FACTORY_MODEL", "FACTORY_PROJECTS_DIR",
             "FACTORY_VAULT_PATH", "FACTORY_PLAYBOOKS_DIR", "FACTORY_REGISTRY_DIR",
-            "FACTORY_MANAGED_DIRS", "FACTORY_RUNNER_QUIET", "FACTORY_BOB_DRY_RUN",
-            "FACTORY_BOB_MAX_INVOCATIONS_PER_CYCLE", "FACTORY_CEO_RESPAWN_DISABLED",
+            "FACTORY_MANAGED_DIRS", "FACTORY_RUNNER_QUIET",
+            "FACTORY_CEO_RESPAWN_DISABLED",
             "FACTORY_CEO_MAX_RESPAWNS",
         ):
             monkeypatch.delenv(key, raising=False)
@@ -755,8 +755,8 @@ class TestMigrateEnvToConfigMocked:
         for key in (
             "FACTORY_RUNNER", "FACTORY_MODEL", "FACTORY_PROJECTS_DIR",
             "FACTORY_VAULT_PATH", "FACTORY_PLAYBOOKS_DIR", "FACTORY_REGISTRY_DIR",
-            "FACTORY_MANAGED_DIRS", "FACTORY_RUNNER_QUIET", "FACTORY_BOB_DRY_RUN",
-            "FACTORY_BOB_MAX_INVOCATIONS_PER_CYCLE", "FACTORY_CEO_RESPAWN_DISABLED",
+            "FACTORY_MANAGED_DIRS", "FACTORY_RUNNER_QUIET",
+            "FACTORY_CEO_RESPAWN_DISABLED",
             "FACTORY_CEO_MAX_RESPAWNS",
         ):
             monkeypatch.delenv(key, raising=False)

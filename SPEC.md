@@ -80,10 +80,7 @@ re:factory treats software improvement as a scientific experiment loop: observe,
 
 ### 4.2 External Dependencies
 
-- `claude` CLI — Claude Code runner (default) (REQUIRED unless using alternate runner)
-- `bob` CLI — Bob Shell runner (OPTIONAL)
-- `codex` CLI — OpenAI Codex runner (OPTIONAL)
-- `opencode` CLI — OpenCode runner (OPTIONAL, requires `opencode-ai/opencode` v0.x from GitHub)
+- `claude` CLI — Claude Code runner (REQUIRED)
 - `gh` CLI — GitHub issue fetching for `--focus` mode (OPTIONAL)
 - `glab` CLI — GitLab issue fetching for `--focus` mode (OPTIONAL)
 - `uv` — Python package manager and virtual environment tool (REQUIRED)
@@ -643,8 +640,8 @@ QA agent MUST write a verdict file to `.factory/reviews/ceo-verdict-qa.md` in th
 
 re:factory uses a five-tier configuration precedence chain (highest to lowest priority):
 
-1. **CLI flag** — e.g., `--runner codex`, `--model gpt-5.4`
-2. **Environment variable** — e.g., `FACTORY_RUNNER=codex`, `ANTHROPIC_API_KEY=...`
+1. **CLI flag** — e.g., `--model claude-opus-4-7`
+2. **Environment variable** — e.g., `FACTORY_RUNNER=claude`, `ANTHROPIC_API_KEY=...`
 3. **Profile credential** — from `~/.factory/config.toml` `[credentials.<profile>]` section (loaded via `--profile <name>`)
 4. **Config.toml default** — from `~/.factory/config.toml` `[defaults]` section
 5. **Hardcoded default** — built into the code (e.g., `runner="claude"`, `model=None`)
@@ -657,7 +654,7 @@ Credential profiles inject all keys from `[credentials.<profile>]` into the subp
 
 ```toml
 [defaults]
-runner = "claude"              # Default runner: "claude", "bob", "codex", "opencode"
+runner = "claude"              # Default runner: "claude"
 model = ""                     # Default model (empty = runner's default)
 projects_dir = "~/factory-projects"  # Default project storage
 
@@ -665,9 +662,6 @@ projects_dir = "~/factory-projects"  # Default project storage
 FACTORY_RUNNER = "claude"
 ANTHROPIC_API_KEY = "sk-ant-..."
 
-[credentials.codex]
-FACTORY_RUNNER = "codex"
-CODEX_API_KEY = "..."
 ```
 
 #### Project Config (`.factory/config.json`)
@@ -684,7 +678,7 @@ See Section 6.2 for full `FactoryConfig` schema. Key fields:
 ### 10.3 Validation and Error Surface
 
 **User config validation:**
-- `runner` MUST be one of: "claude", "bob", "codex", "opencode"
+- `runner` MUST be "claude" (or a third-party runner registered via entry points)
 - `projects_dir` MUST expand to a valid absolute path (tilde expansion allowed)
 - Profile sections MUST have unique names
 - Credential keys MUST be valid environment variable names (uppercase, underscores)
@@ -922,7 +916,7 @@ A conforming re:factory implementation MUST satisfy these criteria:
 
 **Location:** `factory/runners/` directory
 
-**Mechanism:** Each runner is a Python module (e.g., [[graph:factory/runners/claude.py]], [[graph:factory/runners/bob.py]], [[graph:factory/runners/codex.py]]) that implements the `spawn()` function:
+**Mechanism:** Each runner is a Python module (e.g., [[graph:factory/runners/claude.py]]) that implements the `spawn()` function:
 
 ```python
 def spawn(
