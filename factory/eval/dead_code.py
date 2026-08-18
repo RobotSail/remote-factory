@@ -232,7 +232,7 @@ def _vulture_scan(project_path: Path) -> list[dict]:
 
     try:
         v = vulture.Vulture()
-        v.scan([str(project_path)], exclude=[".factory", "__pycache__", ".git", "node_modules"])
+        v.scavenge([str(project_path)], exclude=[".factory", "__pycache__", ".git", "node_modules"])
         results: list[dict] = []
         for item in v.get_unused_code():
             rel_path = str(item.filename)

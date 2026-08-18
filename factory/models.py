@@ -660,16 +660,6 @@ class TelemetrySessionSummary(BaseModel):
     ended_at: str = ""
 
 
-class TelemetryEndpoint(BaseModel):
-    """Telemetry submission endpoint configuration."""
-
-    model_config = ConfigDict(strict=True, extra="forbid")
-
-    url: str
-    timeout_seconds: int = 5
-    retry_count: int = 1
-
-
 # ── dead code analysis ──────────────────────────────────────────
 
 

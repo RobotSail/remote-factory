@@ -36,6 +36,9 @@ def strip_pii(event: dict) -> TelemetryEvent | None:
     if event_type is None:
         return None
 
+    if event_type not in _ALLOWED_EVENT_TYPES:
+        return None
+
     data = event.get("data", {}) or {}
 
     duration = data.get("duration_seconds")
