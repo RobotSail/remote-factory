@@ -39,13 +39,25 @@ All state is local — per-project in `.factory/` (add to `.gitignore`), global 
 
 ## How It Works
 
-re:factory orchestrates a **graph workflow of agents** — a directed acyclic graph (DAG) where each node is either an agent, a shell command, a gate check, or a fork/join for parallelism. Each workflow defines which agents run, in what order, with what conditions, and the engine walks the graph deterministically. Workflows can be created for different tasks and optimized through the outer loop's evolutionary search.
+re:factory defines every workflow as a **Pydantic graph** — a directed acyclic graph (DAG) where each node is an agent, a shell command, a gate check, or a fork/join for parallelism. The same graph definition produces **three execution modes**:
 
-For example, an **email summarizer agent** might be a simple 3-node workflow: a Researcher reads the inbox → a Strategist prioritizes by urgency → a Builder drafts the summary. A **custom research agent** might fork three parallel researchers (domain, competitors, prior art) → join their findings → pass through a coverage gate → synthesize a final report. The graph structure is the same — what changes is the nodes, their prompts, and the edges between them.
+### 1. Headless Executor
 
-A **CEO agent** sits at the top. It detects project state, selects the appropriate workflow graph, and orchestrates specialist agents — Researcher, Strategist, Builder, Reviewer, Evaluator, Archivist, Refiner, and Failure Analyst — each running as an independent [Claude Code](https://docs.anthropic.com/en/docs/claude-code) subprocess. The CEO walks the graph step by step: the Researcher investigates, the Strategist generates ranked hypotheses, the Builder implements on an experiment branch, the Evaluator scores before and after, and the CEO decides keep or revert. The Archivist records everything for cross-project learning.
+`factory workflow run <name> --project /path` — the `WorkflowExecutor` walks the DAG deterministically, running each node in topological order with no human interaction. Used for unattended runs, CI/CD pipelines, and scripted automation.
 
-The two primary modes:
+### 2. Interactive CEO
+
+`factory ceo /path --mode <name>` — `skill_export.py` converts the workflow graph into a SKILL.md prose playbook under `skills/workflow-*/`. At runtime, the CEO agent reads the appropriate SKILL.md and follows it step by step, orchestrating specialist agents — Researcher, Strategist, Builder, Reviewer, Evaluator, Archivist, Refiner, and Failure Analyst — each running as an independent [Claude Code](https://docs.anthropic.com/en/docs/claude-code) subprocess. Unlike the headless executor, the CEO can review agent outputs, redirect failing agents, and apply judgment at gate points.
+
+### 3. Outer Loop — Evolutionary Workflow Search
+
+`factory outer-loop` — instead of *executing* a workflow, the outer loop *evolves* workflow topologies via MAP-Elites quality-diversity search. Starting from a seed workflow, it mutates structure (adding/removing nodes, changing edges, tweaking prompts), evaluates each candidate by running a full CEO cycle, and selects for higher fitness. This is how re:factory improves its own pipelines.
+
+### The graph is the source of truth
+
+For example, an **email summarizer agent** might be a simple 3-node workflow: a Researcher reads the inbox → a Strategist prioritizes by urgency → a Builder drafts the summary. A **custom research agent** might fork three parallel researchers (domain, competitors, prior art) → join their findings → pass through a coverage gate → synthesize a final report. The graph structure is the same — what changes is the nodes, their prompts, and the edges between them. All three execution modes operate on the same underlying graph definition.
+
+The two primary modes for getting started:
 
 - **Design mode** (`--mode design`): The entry point for new ideas and existing projects alike. Researches the space, drafts a structured plan via the Strategist, iterates with you until it's right, then builds. Use this when you want to think before you code.
 - **Create mode** (`--mode create`): Builds new workflow graphs themselves — new factory modes, new pipelines, new agent topologies. Point it at the factory repo and describe what mode you want. It researches existing patterns, synthesizes a workflow spec, gets your approval, then implements the full graph definition, skill export, CLI wiring, and tests.
