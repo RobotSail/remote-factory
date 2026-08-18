@@ -43,11 +43,11 @@ re:factory defines every workflow as a **Pydantic graph** — a directed acyclic
 
 ### 1. Headless Executor
 
-`factory workflow run <name> --project /path` — the `WorkflowExecutor` walks the DAG deterministically, running each node in topological order with no human interaction. Used for unattended runs, CI/CD pipelines, and scripted automation.
+`factory workflow run <name> /path` — the `WorkflowExecutor` walks the DAG deterministically, running each node in topological order with no human interaction. Used for unattended runs, CI/CD pipelines, and scripted automation.
 
 ### 2. Interactive CEO
 
-`factory ceo /path --mode <name>` — `skill_export.py` converts the workflow graph into a SKILL.md prose playbook under `skills/workflow-*/`. At runtime, the CEO agent reads the appropriate SKILL.md and follows it step by step, orchestrating specialist agents — Researcher, Strategist, Builder, Reviewer, Evaluator, Archivist, Refiner, and Failure Analyst — each running as an independent [Claude Code](https://docs.anthropic.com/en/docs/claude-code) subprocess. Unlike the headless executor, the CEO can review agent outputs, redirect failing agents, and apply judgment at gate points.
+`factory ceo /path --mode <name>` — `skill_export.py` converts the workflow graph into a SKILL.md prose playbook under `skills/workflow-*/`. At runtime, the CEO agent reads the appropriate SKILL.md and follows it step by step, orchestrating specialist agents — Researcher, Strategist, Builder, Health Checker, Code Reviewer, Adversarial Tester, Archivist, and Failure Analyst — each running as an independent [Claude Code](https://docs.anthropic.com/en/docs/claude-code) subprocess. Unlike the headless executor, the CEO can review agent outputs, redirect failing agents, and apply judgment at gate points.
 
 ### 3. Outer Loop — Evolutionary Workflow Search
 
