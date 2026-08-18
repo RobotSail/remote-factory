@@ -16,13 +16,39 @@
 
 **Describe what you want — re:factory designs and builds it.** Brainstorm an idea from scratch, refine a plan for an existing project, or create entirely new factory modes.
 
+```bash
+# Design — brainstorm an idea, refine it, then build
+factory ceo "distributed eval runner" --mode design
+
+# Create — build new factory modes and pipelines
+factory ceo /path/to/factory --mode create --focus "PR validation pipeline"
+
+# Build — have a fleshed-out idea? Pass the file.
+factory ceo ~/ideas/weather-dashboard.md
+
+# Improve — point it at any codebase
+factory ceo ~/my-project
+
+# Focus — build exactly one thing
+factory ceo ~/my-project --focus "add WebSocket support"
+```
+
 All state is local — per-project in `.factory/` (add to `.gitignore`), global in `~/.factory/`. See [Architecture](architecture.md) for the full deep-dive.
 
 ---
 
 ## How It Works
 
-A CEO agent orchestrates specialists agents like Researcher, Strategist, Builder, Reviewer, Evaluator, Archivist, Refiner, and Failure Analyst, each running as an independent [Claude Code](https://docs.anthropic.com/en/docs/claude-code) subprocess. The Researcher searches the web and reads prior knowledge from the archive. The Strategist generates ranked hypotheses and handles design-mode ideation. The Builder implements one on an experiment branch. The Evaluator scores before and after. The CEO decides keep or revert. The Archivist records everything to `.factory/archive/` and regenerates performance reports for cross-project learning.
+re:factory orchestrates a **graph workflow of agents** — a directed acyclic graph (DAG) where each node is either an agent, a shell command, a gate check, or a fork/join for parallelism. Each workflow defines which agents run, in what order, with what conditions, and the engine walks the graph deterministically. Workflows can be created for different tasks and optimized through the outer loop's evolutionary search.
+
+For example, an **email summarizer agent** might be a simple 3-node workflow: a Researcher reads the inbox → a Strategist prioritizes by urgency → a Builder drafts the summary. A **custom research agent** might fork three parallel researchers (domain, competitors, prior art) → join their findings → pass through a coverage gate → synthesize a final report. The graph structure is the same — what changes is the nodes, their prompts, and the edges between them.
+
+A **CEO agent** sits at the top. It detects project state, selects the appropriate workflow graph, and orchestrates specialist agents — Researcher, Strategist, Builder, Reviewer, Evaluator, Archivist, Refiner, and Failure Analyst — each running as an independent [Claude Code](https://docs.anthropic.com/en/docs/claude-code) subprocess. The CEO walks the graph step by step: the Researcher investigates, the Strategist generates ranked hypotheses, the Builder implements on an experiment branch, the Evaluator scores before and after, and the CEO decides keep or revert. The Archivist records everything for cross-project learning.
+
+The two primary modes:
+
+- **Design mode** (`--mode design`): The entry point for new ideas and existing projects alike. Researches the space, drafts a structured plan via the Strategist, iterates with you until it's right, then builds. Use this when you want to think before you code.
+- **Create mode** (`--mode create`): Builds new workflow graphs themselves — new factory modes, new pipelines, new agent topologies. Point it at the factory repo and describe what mode you want. It researches existing patterns, synthesizes a workflow spec, gets your approval, then implements the full graph definition, skill export, CLI wiring, and tests.
 
 ---
 
@@ -87,6 +113,39 @@ Point it at the factory repo itself to extend re:factory with custom pipelines.
 
 ---
 
+## Available Workflows
+
+Beyond the core Design and Create modes, re:factory ships with a growing set of workflows — both built-in and community-contributed. Each is a complete graph definition with its own agent topology, gates, and iteration strategy.
+
+### Built-in Workflows
+
+| Workflow | What it does |
+|----------|-------------|
+| **frontend-design** | Feature-to-UI pipeline — forks 5 design researchers in parallel, joins findings, then runs design audit → spec → build → render → deep QA |
+| **parallel-improve** | Forks N hypotheses into isolated git worktrees, runs experiments concurrently, and selects the best result |
+| **deep-research** | Decomposes a topic into research directions, executes each with internal iteration, and checks coverage |
+| **deep-qa** | Multi-stage quality assurance — health check, code review, and adversarial testing in parallel |
+| **study** | Graph-powered codebase analysis — builds a dependency graph, explores it, and produces a combined study report |
+
+### Community-Contributed Benchmarks
+
+These benchmark workflows live in `factory/workflow/contributed/` and follow a standard 4-node pipeline pattern (study → solver → gate → merge). See [Contributing Benchmarks](contributing-benchmarks.md) for how to add your own.
+
+| Workflow | What it solves |
+|----------|---------------|
+| **swebench** | GitHub issues from the SWE-bench dataset in containerized evaluation |
+| **featurebench** | New feature implementations in Python codebases with explicit interface specs |
+| **legacybench** | Bugs in legacy code — COBOL, Fortran, C, Java 7, Assembly |
+| **devopsgym** | Build/configuration tasks — Maven, Gradle, Go modules, Make, Docker, CI/CD |
+| **terminalbench** | Real-world terminal engineering tasks — compiling legacy software, scientific computing, system configuration |
+| **programbench** | Adversarial discovery verification with builder → reviewer loops |
+| **tomswe** | Preference-aware coding tasks with embedded user profiles (Theory of Mind) |
+| **salitrap** | Commonsense reasoning — identifying salience traps in scenarios with numerical distractors |
+
+Run any workflow with `factory ceo /path --mode <name>` or use Create mode to build your own.
+
+---
+
 ## Quick Start
 
 **Prerequisites:** Python 3.11+, [uv](https://docs.astral.sh/uv/#installation), and [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (installed and authenticated).
@@ -139,20 +198,6 @@ See [ACE Playbook Evolution](ace.md) for the playbook mechanics.
 
 ---
 
-## Architecture
-
-re:factory is a three-layer system:
-
-**Layer 1 — Python CLI** (`factory/`): Pure tools that don't make decisions. Eval runner, strategy engine, experiment store, discovery, event logging. Entry point: `factory --help`.
-
-**Layer 2 — CEO Agent** (`factory/agents/prompts/ceo.md`): The orchestrator. Detects project state, spawns specialist agents, and makes the keep/revert decision for each experiment. Mode-specific playbooks are auto-generated from workflow graph definitions.
-
-**Layer 3 — Specialist Agents** (`factory/agents/`): Eight independent Claude Code subprocesses — Researcher, Strategist, Builder, Reviewer, Evaluator, Archivist, Refiner, and Failure Analyst. Each has a focused prompt, receives context from the CEO, and returns structured output. Agent prompts support per-project overrides via `.factory/agents/<role>.md`.
-
-Data flows down: the CEO calls the CLI for eval, store, and guard operations. Agents call nothing — they produce text that the CEO interprets.
-
----
-
 ## Eval System
 
 Every change is measured by a composite score across three tiers:
@@ -185,17 +230,14 @@ The outer loop evolves the factory's own workflow DAGs against benchmarks. Start
 
 ## Built with re:factory
 
-re:factory has shipped something every day for the last 30 days — products, research experiments, production features, papers. Here are a few examples:
-
 | Project | What it does |
 |---------|-------------|
 | **SWE-bench solver** | Autonomous agent that resolves GitHub issues from the SWE-bench dataset, iteratively improved via failure analysis |
 | **HMMT math solver** | Multi-agent team (Explorer, Theorist, Computationalist, Critic, Synthesizer) that solved HMMT Feb 2025 Combinatorics Problem 7 |
 | **Text/Sketch → CAD** | Converts natural language and hand-drawn sketches into executable CadQuery code for 3D model generation |
-| **HLS design space explorer** | Per-function AI agents explore HLS pragma/code variants in parallel, an ILP solver finds the optimal combination, then global expert agents apply cross-function optimizations — achieving up to 92% execution time reduction on cryptographic benchmarks |
+| **HLS design space explorer** | Per-function AI agents explore HLS pragma/code variants in parallel, an ILP solver finds the optimal combination, then global expert agents apply cross-function optimizations |
 | **Pluck** | iOS app that extracts structured data from screenshots, links, and shared content using on-device AI |
 | **Group chat digest** | Turns iMessage group chats into weekly family newsletters with AI-curated highlights and photo selection |
-| **Production enterprise features** | Complete UI components and backend features shipped into a large-scale production codebase |
 | **re:factory itself** | re:factory runs on itself — its own agent playbooks are evolved from its own experiment outcomes |
 
 Built something with re:factory? [Open a PR](https://github.com/akashgit/remote-factory/pulls) to add it here.
