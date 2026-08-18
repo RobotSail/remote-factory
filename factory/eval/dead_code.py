@@ -10,7 +10,7 @@ from __future__ import annotations
 import ast
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 
@@ -56,7 +56,7 @@ def run_dead_code_analysis(project_path: Path) -> DeadCodeReport:
         seen.add(key)
 
         layers: list[str] = ["structural_reachability"]
-        confidence = "low"
+        confidence: Literal["high", "medium", "low"] = "low"
 
         v_key = (sym["name"], sym["file"])
         if v_key in vulture_set:
@@ -225,7 +225,7 @@ def _structural_analysis(
 
 def _vulture_scan(project_path: Path) -> list[dict]:
     try:
-        import vulture
+        import vulture  # type: ignore[import-untyped]
     except ImportError:
         log.debug("vulture_not_installed")
         return []

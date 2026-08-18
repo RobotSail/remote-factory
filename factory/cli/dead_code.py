@@ -5,6 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from factory.models import DeadCodeReport
 
 
 def cmd_dead_code(args: argparse.Namespace) -> int:
@@ -60,7 +64,7 @@ def cmd_dead_code(args: argparse.Namespace) -> int:
     return 0
 
 
-def _format_human_readable(report: DeadCodeReport, include_usage: bool) -> str:  # noqa: F821
+def _format_human_readable(report: DeadCodeReport, include_usage: bool) -> str:
     lines: list[str] = []
     lines.append("# Dead Code Report")
     lines.append("")
