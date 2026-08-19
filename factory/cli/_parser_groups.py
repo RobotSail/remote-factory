@@ -454,6 +454,13 @@ def add_entry_point_parsers(sub: argparse._SubParsersAction) -> None:  # type: i
     p.add_argument("--just-plan", action="store_true", default=False, dest="just_plan",
                     help="Plan-only mode: research + strategy + GitHub publishing, NO implementation. "
                          "Requires --mode design. Mutually exclusive with --from-plan and --prompt.")
+    p.add_argument("--plugin", action="store_true", default=False,
+                    help="Generate mode as a standalone pip-installable plugin package. "
+                         "Requires --mode create. Output includes pyproject.toml with "
+                         "factory.plugins entry point registration.")
+    p.add_argument("--folder", default=None, metavar="PATH",
+                    help="Output directory for plugin package (default: ./<mode-name>-plugin). "
+                         "Only used with --plugin.")
     p.add_argument("--engine", choices=["skill", "tool", "deterministic"], default="skill",
                     help="Execution engine: skill (CEO follows SKILL.md, default), "
                          "tool (CEO drives via factory workflow tool commands), "
