@@ -392,6 +392,8 @@ def _build_ceo_task(
             f"- Do NOT modify `factory/workflow/definitions.py` or any upstream factory files\n"
             f"- Do NOT use `src/` layout — flat layout with workflow `.py` at package root\n"
             f"- Do NOT `git init` the output directory\n"
+            f"- Do NOT commit the plugin to the factory repo or open a PR — "
+            f"the plugin package stays in the output directory as a standalone artifact\n"
             f"- Do NOT include a `tests/` directory (users can add their own later)\n\n"
             f"Follow the Create workflow playbook in skills/workflow-create/SKILL.md.\n"
         )
