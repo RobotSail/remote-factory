@@ -34,8 +34,14 @@ class FeatureBenchInnerLoop:
         workflow: Workflow | None = None,
         frozen_nodes: frozenset[str] = frozenset(),
         test_command: str = "",
+        test_format: str = "pytest",
+        metric_path: str = "score",
     ) -> None:
-        self._evaluator = FeatureBenchEvaluator()
+        if test_format == "pytest":
+            self._evaluator = FeatureBenchEvaluator()
+        else:
+            from factory.outer_loop.evaluators import get_evaluator
+            self._evaluator = get_evaluator(test_format, metric_path=metric_path)
         self._inner_loop = InnerLoop(
             project_dir=project_dir,
             mode=mode,
@@ -43,6 +49,8 @@ class FeatureBenchInnerLoop:
             workflow=workflow,
             frozen_nodes=frozen_nodes,
             test_command=test_command,
+            test_format=test_format,
+            metric_path=metric_path,
         )
 
     @property
