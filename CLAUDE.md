@@ -283,6 +283,8 @@ factory ceo /path/to/project --mode design --from-plan 'auth dashboard'  # Fuzzy
 factory ceo "SWE-bench solver" --mode research            # Research ideation → build
 factory ceo /path/to/factory --mode create --focus "mode description"  # Create a new factory mode
 factory ceo /path/to/factory --mode create --focus "improve: add plateau detection"  # Update existing mode
+factory ceo /path/to/factory --mode create --focus 'approval workflow' --plugin                           # Plugin package → ./approval-workflow-plugin/
+factory ceo /path/to/factory --mode create --focus 'approval workflow' --plugin --folder ~/plugins/approval  # Explicit output dir
 factory ceo /path/to/project --mode design --just-plan                    # Research + strategy, no implementation
 factory ceo "distributed eval runner" --mode design --just-plan            # Plan a new idea
 factory ceo /path/to/project --mode design --just-plan --focus "auth"      # Focused planning
