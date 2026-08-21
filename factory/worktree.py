@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Final
 
@@ -43,6 +45,62 @@ _SHARED_SYMLINK_ENTRIES: Final[tuple[str, ...]] = (
 _COPY_ENTRIES: Final[tuple[str, ...]] = (
     "agents",
 )
+
+
+WORKTREE_VENV_MARKER: Final[str] = ".factory-managed"
+
+
+def _setup_worktree_venv(worktree_path: Path) -> Path | None:
+    """Create a per-worktree Python venv if pyproject.toml is present.
+
+    Tries ``uv sync`` first (auto-creates ``.venv`` + editable install).
+    Falls back to ``python -m venv`` + ``uv pip install -e``.
+    Returns the venv path on success, ``None`` on skip/failure.
+    """
+    if not (worktree_path / "pyproject.toml").exists():
+        return None
+
+    result = subprocess.run(
+        ["uv", "sync", "--directory", str(worktree_path)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        venv_path = worktree_path / ".venv"
+        (venv_path / WORKTREE_VENV_MARKER).touch()
+        log.info("worktree_venv_created", method="uv_sync", path=str(venv_path))
+        return venv_path
+
+    log.warning("worktree_venv_uv_sync_failed", stderr=result.stderr[:200])
+
+    venv_path = worktree_path / ".venv"
+    result = subprocess.run(
+        [sys.executable, "-m", "venv", str(venv_path)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        log.warning("worktree_venv_fallback_venv_failed", stderr=result.stderr[:200])
+        return None
+
+    result = subprocess.run(
+        ["uv", "pip", "install", "-e", str(worktree_path)],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "VIRTUAL_ENV": str(venv_path)},
+    )
+    if result.returncode != 0:
+        log.warning("worktree_venv_fallback_install_failed", stderr=result.stderr[:200])
+        return None
+
+    (venv_path / WORKTREE_VENV_MARKER).touch()
+    log.info("worktree_venv_created", method="fallback", path=str(venv_path))
+    return venv_path
+
+
+def is_factory_venv(project_path: Path) -> bool:
+    """Return True if the .venv at project_path was created by the factory."""
+    return (project_path / ".venv" / WORKTREE_VENV_MARKER).exists()
 
 
 def create_worktree(
@@ -152,6 +210,8 @@ def create_worktree(
 
     log.info("worktree_created", branch=branch, path=str(wt_dir))
 
+    _setup_worktree_venv(wt_dir)
+
     try:
         from factory.events import emit_event
 
@@ -202,6 +262,8 @@ def create_experiment_worktree(
     )
 
     _seed_experiment_factory(factory_dir, wt_dir / ".factory")
+
+    _setup_worktree_venv(wt_dir)
 
     log.info("experiment_worktree_created", branch=branch, path=str(wt_dir))
 

@@ -134,6 +134,12 @@ class ClaudeRunner:
             cmd.extend(["--session-id", request.session_id])
 
         env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
+        if request.cwd:
+            from factory.worktree import is_factory_venv
+            if is_factory_venv(Path(request.cwd)):
+                venv_path = Path(request.cwd) / ".venv"
+                env["VIRTUAL_ENV"] = str(venv_path)
+                env["PATH"] = str(venv_path / "bin") + os.pathsep + env.get("PATH", "")
         if request.model:
             env["FACTORY_MODEL"] = request.model
         if request.cwd:
@@ -311,6 +317,12 @@ class ClaudeRunner:
             cmd.extend(["--session-id", request.session_id])
 
         env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
+        if request.cwd:
+            from factory.worktree import is_factory_venv
+            if is_factory_venv(Path(request.cwd)):
+                venv_path = Path(request.cwd) / ".venv"
+                env["VIRTUAL_ENV"] = str(venv_path)
+                env["PATH"] = str(venv_path / "bin") + os.pathsep + env.get("PATH", "")
         if request.model:
             env["FACTORY_MODEL"] = request.model
         if request.cwd:
