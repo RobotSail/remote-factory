@@ -1,7 +1,7 @@
 # Migration Guide: `akashgit/remote-factory` → `boston-harness-group/remote-factory`
 
 **Date:** 2026-08-22
-**Owner:** @akashgit
+**Owner:** Maintainers
 
 This document covers what changes with the repo transfer and what each collaborator needs to do.
 
@@ -101,7 +101,7 @@ If your PR's branch is on a personal fork, it continues to work. If you had a lo
 
 ---
 
-## What the maintainer (@akashgit) will fix post-transfer
+## What the maintainers will fix post-transfer
 
 A cleanup PR will update all hardcoded references. **Collaborators do not need to do this** — it will land as a single PR after the transfer.
 
@@ -151,7 +151,7 @@ The docs site URL changes:
 - **Old:** `https://akashgit.github.io/remote-factory/`
 - **New:** `https://boston-harness-group.github.io/remote-factory/`
 
-The old URL will stop working. The new URL requires GitHub Pages to be enabled in the org settings (the maintainer will do this).
+The old URL will stop working. The new URL requires GitHub Pages to be enabled in the org settings (the maintainers will do this).
 
 ### Downstream dependency: `refactory-midstream`
 
@@ -178,10 +178,10 @@ This will continue to work via redirect, but will be updated separately.
 1. **Transfer happens:** Immediate redirect active, access requires org invitation acceptance
 2. **Cleanup PR lands:** Within 24 hours — updates all hardcoded references
 3. **Container image rebuilt:** Automatic on next push to `main` after cleanup PR
-4. **Old redirect:** Works indefinitely (unless a repo named `remote-factory` is created under `akashgit`)
+4. **Old redirect:** Works indefinitely (unless a new repo named `remote-factory` is created under the old owner)
 
 ---
 
 ## Questions?
 
-Ping @akashgit in the repo Discussions or open an issue.
+Reach out in the repo Discussions or open an issue.
