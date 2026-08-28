@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import networkx as nx
@@ -48,13 +49,14 @@ class WeightedRandomStrategy:
         designer_ratio: float = 0.3,
     ) -> None:
         self.weights = weights or {
-            MutationType.NODE_INSERT.value: 0.18,
-            MutationType.NODE_REMOVE.value: 0.13,
-            MutationType.EDGE_REDIRECT.value: 0.18,
-            MutationType.PARALLELIZE.value: 0.13,
-            MutationType.SERIALIZE.value: 0.08,
-            MutationType.PARAM_MUTATE.value: 0.15,
-            MutationType.PROMPT_MUTATE.value: 0.15,
+            MutationType.NODE_INSERT.value: 0.15,
+            MutationType.NODE_REMOVE.value: 0.10,
+            MutationType.EDGE_REDIRECT.value: 0.15,
+            MutationType.PARALLELIZE.value: 0.10,
+            MutationType.SERIALIZE.value: 0.05,
+            MutationType.PARAM_MUTATE.value: 0.10,
+            MutationType.PROMPT_MUTATE.value: 0.10,
+            MutationType.KNOB_MUTATE.value: 0.25,
         }
         self._mutation_rate = mutation_rate
         self._designer_ratio = designer_ratio
@@ -86,6 +88,8 @@ class WeightedRandomStrategy:
                 op_counts[MutationType.PARAM_MUTATE] = op_counts.get(MutationType.PARAM_MUTATE, 0) + 1
             elif "PROMPT_MUTATE" in upper:
                 op_counts[MutationType.PROMPT_MUTATE] = op_counts.get(MutationType.PROMPT_MUTATE, 0) + 1
+            elif "KNOB" in upper:
+                op_counts[MutationType.KNOB_MUTATE] = op_counts.get(MutationType.KNOB_MUTATE, 0) + 1
 
         if not op_counts:
             return self.select_operator(parent, generation, {})
@@ -120,6 +124,17 @@ def validate_and_repair(workflow: Workflow) -> Workflow | None:
     for edge in workflow.edges:
         if edge.source in workflow.nodes and edge.target in workflow.nodes:
             g.add_edge(edge.source, edge.target)
+    # ForkNode.targets and JoinNode.sources declare implicit edges
+    # that nx.descendants must follow for correct reachability.
+    for nid, node in workflow.nodes.items():
+        if isinstance(node, ForkNode):
+            for target in node.targets:
+                if target in workflow.nodes:
+                    g.add_edge(nid, target)
+        elif isinstance(node, JoinNode):
+            for source in node.sources:
+                if source in workflow.nodes:
+                    g.add_edge(source, nid)
 
     if workflow.start_node not in workflow.nodes:
         return None
@@ -189,6 +204,9 @@ def _deep_copy_workflow(workflow: Workflow) -> Workflow:
         edges=edges,
         start_node=workflow.start_node,
         terminal=workflow.terminal,
+        knob_values=dict(workflow.knob_values),
+        knob_bounds={k: list(v) for k, v in workflow.knob_bounds.items()},
+        knob_expandable=dict(workflow.knob_expandable),
     )
 
 
@@ -549,6 +567,104 @@ def mutate_prompt(
     return wf, record
 
 
+KnobExpander = Callable[[str, str, str | float, list[str | float]], str | float | None]
+
+
+def default_knob_expander(
+    knob_name: str,
+    hint: str,
+    current: str | float,
+    bounds: list[str | float],
+) -> str | float | None:
+    """Default expander: uses claude CLI to invent new knob values."""
+    import subprocess
+
+    prompt = (
+        f"Invent a new value for the parameter '{knob_name}'.\n"
+        f"Context: {hint}\n"
+        f"Current value: {current}\n"
+        f"Existing options: {bounds}\n\n"
+        f"Write ONLY the new value (a short name if it's a prompt knob, "
+        f"or a number if it's a threshold). Nothing else."
+    )
+    try:
+        proc = subprocess.run(
+            ["claude", "-p", prompt, "--model", "opus",
+             "--append-system-prompt", "Output only the value, no explanation.",
+             "--max-turns", "1", "--output-format", "text"],
+            capture_output=True, text=True, timeout=60,
+        )
+        result = proc.stdout.strip()
+        if not result:
+            return None
+        try:
+            return float(result)
+        except ValueError:
+            return result[:80]
+    except Exception:
+        return None
+
+
+def mutate_knob(
+    workflow: Workflow,
+    *,
+    expander: KnobExpander | None = default_knob_expander,
+) -> tuple[Workflow, MutationRecord] | None:
+    """Mutate a single knob value within its declared bounds.
+
+    Reads knob_values from the workflow (populated by Package.compile()),
+    picks one at random, and changes it to a different value from the
+    corresponding OptKnob's bounds.
+
+    When all bounds are exhausted and the knob is expandable, calls
+    ``expander(knob_name, expansion_hint, current_value, bounds)`` to
+    generate a new value. The expander can be backed by an LLM (e.g.
+    Opus authoring a new prompt variant). If the expander returns a
+    value, it is added to knob_bounds for future mutations.
+    """
+    if not workflow.knob_values:
+        return None
+
+    wf = _deep_copy_workflow(workflow)
+    knob_names = list(wf.knob_values.keys())
+    knob_name = random.choice(knob_names)
+    old_val = wf.knob_values[knob_name]
+    bounds = wf.knob_bounds.get(knob_name, [])
+
+    new_val: str | float | None = None
+
+    if bounds:
+        alternatives = [v for v in bounds if v != old_val]
+        if alternatives:
+            new_val = random.choice(alternatives)
+        elif knob_name in wf.knob_expandable and expander is not None:
+            hint = wf.knob_expandable[knob_name]
+            new_val = expander(knob_name, hint, old_val, bounds)
+            if new_val is not None:
+                wf.knob_bounds.setdefault(knob_name, []).append(new_val)
+                log.info("knob_expanded", knob=knob_name, new_value=new_val)
+
+    if new_val is None:
+        if isinstance(old_val, bool):
+            new_val = not old_val
+        elif isinstance(old_val, (int, float)):
+            delta = random.choice([-1, 1]) * max(1, abs(old_val) * 0.2)
+            new_val = type(old_val)(old_val + delta)
+        else:
+            return None
+
+    wf.knob_values[knob_name] = new_val
+
+    record = MutationRecord(
+        operator=MutationType.KNOB_MUTATE,
+        target_node=knob_name,
+        before={"value": str(old_val)},
+        after={"value": str(new_val)},
+        rationale=f"Mutated knob {knob_name}: {old_val} -> {new_val}",
+    )
+    return wf, record
+
+
 def apply_random_mutation(
     workflow: Workflow,
     strategy: MutationStrategy,
@@ -557,12 +673,16 @@ def apply_random_mutation(
     frozen_nodes: set[str] | None = None,
     archive_stats: dict[str, object] | None = None,
     reflection_report: ReflectionReport | None = None,
+    knob_expander: KnobExpander | None = default_knob_expander,
     max_attempts: int = 10,
 ) -> tuple[Workflow, MutationRecord] | None:
     """Apply a mutation using the given strategy. Retries on failure.
 
     When reflection_report is provided, guided mutations are attempted first
     (70% of the time), falling back to random mutations.
+
+    When knob_expander is provided, KNOB_MUTATE can generate new values
+    beyond the declared bounds for expandable knobs.
     """
     frozen = frozen_nodes or set()
     stats = archive_stats or {}
@@ -584,7 +704,8 @@ def apply_random_mutation(
             op = MutationType.PARAM_MUTATE
 
         prompt_hint = _extract_prompt_hint(reflection_report) if reflection_report else None
-        result = _try_mutation(workflow, op, frozen, prompt_hint=prompt_hint)
+        result = _try_mutation(workflow, op, frozen, prompt_hint=prompt_hint,
+                               expander=knob_expander)
         if result is not None:
             wf, rec = result
             if len(wf.nodes) > MAX_NODES:
@@ -609,12 +730,13 @@ def _try_mutation(
     frozen: set[str],
     *,
     prompt_hint: str | None = None,
+    **kwargs: object,
 ) -> tuple[Workflow, MutationRecord] | None:
     """Attempt a single mutation of the given type."""
     mutable_nodes = [
         nid for nid in workflow.nodes if nid not in frozen and nid != workflow.start_node
     ]
-    if not mutable_nodes and op not in (MutationType.NODE_INSERT,):
+    if not mutable_nodes and op not in (MutationType.NODE_INSERT, MutationType.KNOB_MUTATE):
         return None
 
     if op == MutationType.NODE_INSERT:
@@ -683,5 +805,9 @@ def _try_mutation(
             return None
         target = random.choice(agent_nodes)
         return mutate_prompt(workflow, target, frozen_nodes=frozen, prompt_hint=prompt_hint)
+
+    elif op == MutationType.KNOB_MUTATE:
+        exp = kwargs.get("expander")
+        return mutate_knob(workflow, expander=exp if callable(exp) else None)
 
     return None
