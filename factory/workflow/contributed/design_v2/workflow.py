@@ -45,6 +45,7 @@ def workflow() -> Workflow:
     wf = build_workflow()
 
     # ── Bootstrap: gate_has_factory + discover + factory.md creation ──
+    # TODO: extract shared bootstrap subgraph to avoid copy-paste with definitions.design_workflow().
 
     wf.nodes["gate_has_factory"] = GateNode(
         id="gate_has_factory",
@@ -112,23 +113,10 @@ def workflow() -> Workflow:
     wf.nodes["init_user_intent"] = FnNode(
         id="init_user_intent",
         command=(
-            "python3 -c \""
-            "import datetime, os, sys; "
-            "from pathlib import Path; "
-            "project = sys.argv[1]; "
-            "intent = Path(f'{project}/.factory/strategy/user-intent.md'); "
-            "(sys.exit(0) if intent.exists() and intent.stat().st_size > 0 else None); "
-            "ts = datetime.datetime.now().isoformat(timespec='seconds'); "
-            "bl = Path(f'{project}/.factory/strategy/backlog.md'); "
-            "idea = os.environ.get('FACTORY_IDEA', '') "
-            "or (bl.read_text().strip().splitlines()[0] "
-            "if bl.exists() and bl.stat().st_size > 0 else '') "
-            "or 'No idea provided'; "
-            "Path(f'{project}/.factory/strategy').mkdir(parents=True, exist_ok=True); "
-            "content = f'# User Intent Ledger\\\\n\\\\n## [{ts}] Initial Idea\\\\n{idea}\\\\n'; "
-            "intent.write_text(content); "
-            "print(f'User intent ledger initialized at {ts}')\" "
-            "\"{project_path}\""
+            'python3 -c '
+            '"from factory.workflow.contributed.design_v2.intent_init '
+            'import main; main()" '
+            '"{project_path}"'
         ),
         writes={".factory/strategy/user-intent.md"},
         notes="Creates the user intent ledger with the initial idea.",
@@ -183,7 +171,10 @@ def workflow() -> Workflow:
         id="synthesize_strategy",
         role=AgentRole.STRATEGIST,
         prompt_template=SYNTHESIZE_STRATEGY_PROMPT,
-        reads={".factory/strategy/user-intent.md"},
+        reads={
+            ".factory/strategy/user-intent.md",
+            ".factory/strategy/strategy-plan.json",
+        },
         writes={".factory/strategy/current.md"},
         post_checks=[
             ArtifactCheck(
@@ -251,49 +242,10 @@ def workflow() -> Workflow:
     wf.nodes["synthesize_qa"] = FnNode(
         id="synthesize_qa",
         command=(
-            "python3 -c \""
-            "from pathlib import Path; "
-            "import re, sys; "
-            "project = sys.argv[1]; "
-            "reports = []; "
-            "for p in sorted(Path(f'{project}/.factory/reviews').glob("
-            "'adversarial-*-latest.md')): "
-            "    slug = p.name.replace('-latest.md', '').replace("
-            "'adversarial-', ''); "
-            "    reports.append((slug, p.read_text())); "
-            "findings = {}; "
-            "for tester_slug, text in reports: "
-            "    for line in text.splitlines(): "
-            "        stripped = line.strip(); "
-            "        if stripped.startswith('- ') or stripped.startswith('* '): "
-            "            key = re.sub(r'\\\\s+', ' ', "
-            "stripped[2:].strip().lower()[:80]); "
-            "            findings.setdefault(key, []).append(tester_slug); "
-            "high = [(k, v) for k, v in findings.items() if len(v) >= 2]; "
-            "medium = [(k, v) for k, v in findings.items() if len(v) == 1]; "
-            "out = ['# Synthesized QA Report\\\\n']; "
-            "hc = Path(f'{project}/.factory/reviews/health-check.md'); "
-            "cr = Path(f'{project}/.factory/reviews/code-review.md'); "
-            "out.append('## Health Check\\\\n'); "
-            "out.append(hc.read_text() if hc.exists() else '(not available)'); "
-            "out.append('\\\\n## Code Review\\\\n'); "
-            "out.append(cr.read_text() if cr.exists() else '(not available)'); "
-            "out.append('\\\\n## High-Confidence Adversarial Findings "
-            "(caught by 2+ testers)\\\\n'); "
-            "[out.append(f'- {k} (testers: {v})') for k, v in high]; "
-            "if not high: out.append('- (none)'); "
-            "out.append('\\\\n## Medium-Confidence Adversarial Findings "
-            "(single tester)\\\\n'); "
-            "[out.append(f'- {k} (tester: {v[0]})') for k, v in medium]; "
-            "if not medium: out.append('- (none)'); "
-            "out.append('\\\\n## Raw Adversarial Reports\\\\n'); "
-            "[out.append(f'### Tester: {slug}\\\\n{text}\\\\n') "
-            "for slug, text in reports]; "
-            "Path(f'{project}/.factory/reviews/qa-synthesized.md').write_text("
-            "'\\\\n'.join(out)); "
-            "print(f'Synthesized {len(high)} high + {len(medium)} medium "
-            "findings from {len(reports)} adversarial reports')\" "
-            "\"{project_path}\""
+            "python3 -c "
+            '"from factory.workflow.contributed.design_v2.qa_synthesis '
+            'import main; main()" '
+            '"{project_path}"'
         ),
         reads={
             ".factory/reviews/health-check.md",
