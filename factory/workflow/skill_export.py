@@ -83,6 +83,16 @@ WORKFLOW_META: dict[str, dict[str, str | list[str]]] = {
         ),
         "argument_hint": "<project_path>",
     },
+    "create-v2": {
+        "description": (
+            "Create mode with inference-time scaling — dynamic research, "
+            "multi-strategy with intent fidelity, workflow-specific QA (mandatory "
+            "workflow-validate and cli-integration testers), and Overwatch "
+            "verification. Use when the user says 'create a mode' and wants "
+            "the v2 pipeline with directors and intent tracking."
+        ),
+        "argument_hint": '"mode description" or "existing_mode: change description"',
+    },
 }
 
 
@@ -753,12 +763,12 @@ def workflow_to_skill_md(workflow: Workflow) -> str:
     result = f"{frontmatter}\n\n{header}\n\n{body}\n"
 
     line_count = result.count("\n") + 1
-    if line_count > 600:
+    if line_count > 1200:
         log.warning(
             "skill_export.oversized",
             workflow=name,
             lines=line_count,
-            limit=600,
+            limit=1200,
         )
 
     return result
@@ -841,7 +851,7 @@ def validate_skill(content: str) -> list[str]:
             issues.append(f"Description exceeds 1024 chars ({len(desc_val)})")
 
     line_count = content.count("\n") + 1
-    if line_count > 600:
-        issues.append(f"Body exceeds 600 lines ({line_count})")
+    if line_count > 1200:
+        issues.append(f"Body exceeds 1200 lines ({line_count})")
 
     return issues
