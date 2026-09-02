@@ -677,9 +677,12 @@ def prune_stale(project_path: Path) -> list[str]:
     )
     pruned = [line for line in result.stderr.splitlines() if "Removing" in line]
 
-    # Build the path→branch mapping ONCE for both sweeps
+    # Full set of ALL registered worktree paths (including detached-HEAD) —
+    # used for orphan detection in Sweep 1.
+    active_paths = _list_active_worktrees(project_path)
+    # Path→branch mapping (only worktrees WITH a branch) — used for branch
+    # lookups in Sweep 2 (idle GC).
     wt_branch_map = _list_worktrees_with_branches(project_path)
-    active_paths = set(wt_branch_map.keys())
 
     # --- Sweep 1: orphan directories (not in git worktree list) ---
     wt_parents = [
@@ -692,13 +695,9 @@ def prune_stale(project_path: Path) -> list[str]:
         for d in wt_parent.iterdir():
             if d.is_dir() and str(d.resolve()) not in active_paths:
                 name = d.name
-                # Prefer real branch from porcelain mapping; fall back to
-                # reconstruction only when the path isn't in the mapping
-                # (which is the common case for true orphans).
-                resolved = str(d.resolve())
-                if resolved in wt_branch_map:
-                    branch = wt_branch_map[resolved]
-                elif name.startswith("exp-"):
+                # True orphans are not in git's worktree list at all, so
+                # reconstruct the branch name from the directory name.
+                if name.startswith("exp-"):
                     branch = f"factory/{name}"
                 else:
                     branch = f"factory/run-{name.removeprefix('run-')}"
@@ -952,5 +951,22 @@ def _list_worktrees_with_branches(project_path: Path) -> dict[str, str]:
 
 
 def _list_active_worktrees(project_path: Path) -> set[str]:
-    """Return set of absolute paths for all active worktrees."""
-    return set(_list_worktrees_with_branches(project_path).keys())
+    """Return set of absolute paths for ALL git-registered worktrees.
+
+    Parses every ``worktree <path>`` line from ``git worktree list --porcelain``,
+    including detached-HEAD worktrees and the main worktree.  This is the
+    authoritative set of paths that git considers "registered" — used for
+    orphan detection in :func:`prune_stale` so that detached-HEAD worktrees
+    are never misclassified as orphans.
+    """
+    result = subprocess.run(
+        ["git", "worktree", "list", "--porcelain"],
+        cwd=project_path,
+        capture_output=True,
+        text=True,
+    )
+    paths: set[str] = set()
+    for line in result.stdout.splitlines():
+        if line.startswith("worktree "):
+            paths.add(line.split(" ", 1)[1])
+    return paths

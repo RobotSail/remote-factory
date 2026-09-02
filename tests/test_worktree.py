@@ -1707,3 +1707,102 @@ class TestWorktreeGCIdleReclaim:
         # No GC events
         mock_emit.assert_not_called()
         assert not any("GC reclaimed" in msg for msg in pruned)
+
+
+class TestDetachedHeadWorktreeSurvives:
+    """Regression test: a detached-HEAD worktree must NOT be deleted by prune_stale().
+
+    Before this fix, _list_active_worktrees() derived from
+    _list_worktrees_with_branches().keys(), which omits detached-HEAD worktrees.
+    This caused Sweep 1 (orphan detection) to misclassify a git-registered
+    detached-HEAD worktree as an orphan and destroy it — bypassing the idle-age
+    and active-session guardrails entirely.
+    """
+
+    def test_detached_head_worktree_not_deleted(
+        self, git_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A git-registered detached-HEAD worktree with uncommitted work survives prune_stale."""
+        monkeypatch.delenv("FACTORY_REMOVE_WORKTREE", raising=False)
+        # Conservative threshold: nothing should be reclaimed by idle-GC
+        monkeypatch.setenv("FACTORY_WORKTREE_IDLE_RECLAIM_HOURS", "9999")
+
+        env = {
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_COMMITTER_NAME": "test",
+            "GIT_COMMITTER_EMAIL": "test@test.com",
+            "HOME": str(git_project.parent),
+            "PATH": "/usr/bin:/bin:/usr/local/bin",
+        }
+
+        # 1. Create a real factory worktree
+        wt_path, branch = create_worktree(git_project)
+        assert wt_path.exists()
+
+        # 2. Write an uncommitted file (precious work that must survive)
+        precious_file = wt_path / "precious_uncommitted.txt"
+        precious_file.write_text("important uncommitted work — must not be destroyed")
+
+        # 3. Detach HEAD inside the worktree (simulates git checkout --detach,
+        #    interrupted rebase, or bisect)
+        subprocess.run(
+            ["git", "checkout", "--detach"],
+            cwd=wt_path,
+            capture_output=True,
+            check=True,
+            env=env,
+        )
+
+        # Verify the worktree IS registered but has no branch (detached HEAD)
+        porcelain = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            cwd=git_project,
+            capture_output=True,
+            text=True,
+        ).stdout
+        # The worktree path should appear in porcelain output
+        assert str(wt_path.resolve()) in porcelain
+
+        # Verify _list_active_worktrees includes the detached worktree
+        active = _list_active_worktrees(git_project)
+        assert str(wt_path.resolve()) in active
+
+        # Verify _list_worktrees_with_branches does NOT include it (no branch)
+        branch_map = _list_worktrees_with_branches(git_project)
+        assert str(wt_path.resolve()) not in branch_map
+
+        # 4. Run prune_stale with active sessions patched True (extra safety)
+        with (
+            patch("factory.worktree._has_active_sessions", return_value=True),
+            patch("factory.events.emit_event") as mock_emit,
+        ):
+            pruned = prune_stale(git_project)
+
+        # 5. Assert: the worktree directory STILL EXISTS
+        assert wt_path.exists(), (
+            f"Detached-HEAD worktree was destroyed by prune_stale! pruned={pruned}"
+        )
+
+        # 6. Assert: the uncommitted file STILL EXISTS
+        assert precious_file.exists(), (
+            "Uncommitted file in detached-HEAD worktree was destroyed!"
+        )
+        assert precious_file.read_text() == "important uncommitted work — must not be destroyed"
+
+        # 7. Assert: the branch is NOT deleted
+        branch_result = subprocess.run(
+            ["git", "branch", "--list", branch],
+            cwd=git_project,
+            capture_output=True,
+            text=True,
+        )
+        assert branch in branch_result.stdout, (
+            f"Branch {branch} was deleted even though the worktree is still registered!"
+        )
+
+        # 8. No orphan or GC messages for this worktree
+        assert not any(wt_path.name in msg for msg in pruned), (
+            f"Detached-HEAD worktree appeared in pruned messages: {pruned}"
+        )
+        mock_emit.assert_not_called()
