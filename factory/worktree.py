@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Final
 
@@ -587,8 +589,82 @@ def remove_worktree(project_path: Path, worktree_path: Path, branch: str) -> Non
     )
 
 
+_STANDARD_BRANCH_RE = re.compile(r"^factory/(run-[0-9a-f]+|exp-\d+)$")
+
+
+def _is_standard_factory_branch(branch: str) -> bool:
+    """Return True if *branch* matches the standard factory branch patterns.
+
+    Standard patterns: ``factory/run-<hex>`` and ``factory/exp-<int>``.
+    Human-named branches (e.g. ``fix/readme-content-regression``,
+    ``factory/extract-skillopt-1342``) return False and are never GC'd.
+    """
+    return _STANDARD_BRANCH_RE.match(branch) is not None
+
+
+def _get_branch_last_commit_ts(project_path: Path, branch: str) -> float | None:
+    """Return the UNIX timestamp of the last commit on *branch*, or None on failure."""
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%ct", branch],
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return float(result.stdout.strip())
+    except (subprocess.TimeoutExpired, ValueError, OSError):
+        pass
+    return None
+
+
+def _compute_idle_seconds(
+    project_path: Path,
+    worktree_path: Path,
+    branch: str,
+) -> float:
+    """Return how many seconds the worktree has been idle.
+
+    Idle age is the *minimum* of (now − last-commit-time) and (now − dir-mtime).
+    Using the minimum means we only consider the worktree idle if BOTH signals
+    indicate inactivity — this is conservative and catches uncommitted work that
+    would only show up in the mtime.
+    """
+    now = time.time()
+    ages: list[float] = []
+
+    commit_ts = _get_branch_last_commit_ts(project_path, branch)
+    if commit_ts is not None:
+        ages.append(now - commit_ts)
+
+    try:
+        dir_mtime = worktree_path.stat().st_mtime
+        ages.append(now - dir_mtime)
+    except OSError:
+        pass
+
+    if not ages:
+        return 0.0  # Can't determine age → treat as fresh (safe default)
+
+    # Return the MINIMUM age — only reclaim when ALL signals agree it's idle
+    return min(ages)
+
+
 def prune_stale(project_path: Path) -> list[str]:
-    """Clean up stale worktrees from crashed runs. Returns list of pruned entries."""
+    """Clean up stale worktrees from crashed runs. Returns list of pruned entries.
+
+    Two sweeps are performed:
+
+    1. **Orphan sweep** — directories under ``.factory-worktrees/`` that git no
+       longer tracks (after ``git worktree prune``).  Uses the real branch from
+       porcelain output when available, falls back to dir-name reconstruction.
+
+    2. **Idle-registered sweep** — worktrees that ARE still git-registered but
+       are idle past a configurable threshold, have no active session, are on a
+       standard ``factory/run-*`` or ``factory/exp-*`` branch, and pass the
+       retention opt-out check.
+    """
     project_path = project_path.resolve()
     if not project_path.exists():
         return []
@@ -601,27 +677,34 @@ def prune_stale(project_path: Path) -> list[str]:
     )
     pruned = [line for line in result.stderr.splitlines() if "Removing" in line]
 
-    # Check both current (.factory-worktrees/) and legacy (.factory/worktrees/) locations
+    # Build the path→branch mapping ONCE for both sweeps
+    wt_branch_map = _list_worktrees_with_branches(project_path)
+    active_paths = set(wt_branch_map.keys())
+
+    # --- Sweep 1: orphan directories (not in git worktree list) ---
     wt_parents = [
         project_path / ".factory-worktrees",
         project_path / ".factory" / "worktrees",
     ]
-    active: set[str] | None = None
     for wt_parent in wt_parents:
         if not wt_parent.is_dir():
             continue
-        if active is None:
-            active = _list_active_worktrees(project_path)
         for d in wt_parent.iterdir():
-            if d.is_dir() and str(d.resolve()) not in active:
+            if d.is_dir() and str(d.resolve()) not in active_paths:
                 name = d.name
-                if name.startswith("exp-"):
+                # Prefer real branch from porcelain mapping; fall back to
+                # reconstruction only when the path isn't in the mapping
+                # (which is the common case for true orphans).
+                resolved = str(d.resolve())
+                if resolved in wt_branch_map:
+                    branch = wt_branch_map[resolved]
+                elif name.startswith("exp-"):
                     branch = f"factory/{name}"
                 else:
                     branch = f"factory/run-{name.removeprefix('run-')}"
-                    if not _should_remove_worktree(branch):
-                        log.info("worktree_prune_skipped", reason="retention_enabled", name=name)
-                        continue
+                if not name.startswith("exp-") and not _should_remove_worktree(branch):
+                    log.info("worktree_prune_skipped", reason="retention_enabled", name=name)
+                    continue
                 shutil.rmtree(d)
                 pruned.append(f"Removed orphaned directory: {name}")
                 log.info("worktree_pruned_orphan", name=name)
@@ -630,6 +713,112 @@ def prune_stale(project_path: Path) -> list[str]:
                     cwd=project_path,
                     capture_output=True,
                 )
+
+    # --- Sweep 2: idle git-registered worktrees (worktree GC) ---
+    from factory import user_config
+
+    idle_hours_str = user_config.resolve(
+        "worktree_idle_reclaim_hours",
+        env_var="FACTORY_WORKTREE_IDLE_RECLAIM_HOURS",
+        default="24",
+    )
+    try:
+        idle_threshold_secs = float(idle_hours_str or "24") * 3600
+    except (ValueError, TypeError):
+        idle_threshold_secs = 24 * 3600
+
+    wt_base = project_path / ".factory-worktrees"
+    if wt_base.is_dir():
+        for d in sorted(wt_base.iterdir()):
+            if not d.is_dir():
+                continue
+            resolved = str(d.resolve())
+            if resolved not in wt_branch_map:
+                continue  # Already handled (or will be handled) by orphan sweep
+
+            real_branch = wt_branch_map[resolved]
+
+            # (c) Standard branch check
+            if not _is_standard_factory_branch(real_branch):
+                log.debug(
+                    "worktree_gc_skip_nonstandard",
+                    path=str(d),
+                    branch=real_branch,
+                )
+                continue
+
+            # (d) Retention opt-out
+            if not _should_remove_worktree(real_branch):
+                log.debug(
+                    "worktree_gc_skip_retained",
+                    path=str(d),
+                    branch=real_branch,
+                )
+                continue
+
+            # (b) Active session check
+            if _has_active_sessions(d):
+                log.debug(
+                    "worktree_gc_skip_active_session",
+                    path=str(d),
+                    branch=real_branch,
+                )
+                continue
+
+            # (a) Idle check
+            idle_seconds = _compute_idle_seconds(project_path, d, real_branch)
+            if idle_seconds < idle_threshold_secs:
+                log.debug(
+                    "worktree_gc_skip_fresh",
+                    path=str(d),
+                    branch=real_branch,
+                    idle_seconds=idle_seconds,
+                )
+                continue
+
+            # All conditions met — reclaim
+            log.info(
+                "worktree_gc_reclaiming",
+                path=str(d),
+                branch=real_branch,
+                idle_seconds=idle_seconds,
+            )
+
+            _sync_backlog_to_main(d, project_path)
+            _preserve_telemetry(d, project_path)
+            shutil.rmtree(d)
+
+            subprocess.run(
+                ["git", "worktree", "prune"],
+                cwd=project_path,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "branch", "-D", real_branch],
+                cwd=project_path,
+                capture_output=True,
+            )
+
+            try:
+                from factory.events import emit_event
+
+                emit_event(
+                    project_path,
+                    "worktree.gc_reclaimed",
+                    data={
+                        "branch": real_branch,
+                        "idle_seconds": idle_seconds,
+                        "worktree_path": str(d),
+                        "reclaim_reason": "idle_standard_branch_no_session",
+                    },
+                )
+            except Exception:
+                pass
+
+            pruned.append(
+                f"GC reclaimed idle worktree: {d.name} (branch={real_branch}, "
+                f"idle={idle_seconds:.0f}s)"
+            )
 
     if pruned:
         log.info("worktree_prune_complete", pruned_count=len(pruned))
@@ -721,14 +910,47 @@ def detect_default_branch(project_path: Path) -> str:
     return "main"
 
 
-def _list_active_worktrees(project_path: Path) -> set[str]:
-    """Return set of absolute paths for all active worktrees."""
+def _list_worktrees_with_branches(project_path: Path) -> dict[str, str]:
+    """Return a mapping of resolved worktree path → branch name.
+
+    Parses ``git worktree list --porcelain`` output.  Blocks are separated by
+    blank lines.  Each block has a ``worktree <path>`` line and optionally a
+    ``branch refs/heads/<name>`` line.  Detached-HEAD worktrees (no ``branch``
+    line) are omitted from the result.
+    """
     result = subprocess.run(
         ["git", "worktree", "list", "--porcelain"],
         cwd=project_path,
         capture_output=True,
         text=True,
     )
-    return {
-        line.split(" ", 1)[1] for line in result.stdout.splitlines() if line.startswith("worktree ")
-    }
+    mapping: dict[str, str] = {}
+    current_path: str | None = None
+    current_branch: str | None = None
+
+    for line in result.stdout.splitlines():
+        if line.startswith("worktree "):
+            # If we had a previous block with both path and branch, record it
+            if current_path is not None and current_branch is not None:
+                mapping[current_path] = current_branch
+            current_path = line.split(" ", 1)[1]
+            current_branch = None
+        elif line.startswith("branch refs/heads/"):
+            current_branch = line.removeprefix("branch refs/heads/")
+        elif line == "":
+            # End of block
+            if current_path is not None and current_branch is not None:
+                mapping[current_path] = current_branch
+            current_path = None
+            current_branch = None
+
+    # Handle the last block (porcelain output may not end with a blank line)
+    if current_path is not None and current_branch is not None:
+        mapping[current_path] = current_branch
+
+    return mapping
+
+
+def _list_active_worktrees(project_path: Path) -> set[str]:
+    """Return set of absolute paths for all active worktrees."""
+    return set(_list_worktrees_with_branches(project_path).keys())
