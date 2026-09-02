@@ -917,7 +917,7 @@ class TestCmdRunMultiIssue:
             patch("factory.cli.run._print_banner"),
             patch("factory.cli.run._ensure_dashboard"),
             patch("factory.cli.run._run_single_cycle", return_value=0) as mock_cycle,
-            patch("factory.cli.run._chain_modes", return_value=0),
+
             patch("factory.worktree.prune_stale", return_value=[]),
             patch("pathlib.Path.is_dir", return_value=True),
         ):
@@ -974,7 +974,7 @@ class TestCmdRunMultiIssue:
             patch("factory.cli.run._print_banner"),
             patch("factory.cli.run._ensure_dashboard"),
             patch("factory.cli.run._run_single_cycle", return_value=0) as mock_cycle,
-            patch("factory.cli.run._chain_modes", return_value=0),
+
             patch("factory.worktree.prune_stale", return_value=[]),
             patch("pathlib.Path.is_dir", return_value=True),
         ):
@@ -1146,7 +1146,7 @@ class TestCmdRunBacklogMultiIssue:
             patch("factory.cli.run._print_banner"),
             patch("factory.cli.run._ensure_dashboard"),
             patch("factory.cli.run._run_single_cycle", return_value=0),
-            patch("factory.cli.run._chain_modes", return_value=0),
+
             patch("factory.worktree.prune_stale", return_value=[]),
             patch("pathlib.Path.is_dir", return_value=True),
         ):
@@ -1197,7 +1197,7 @@ class TestCmdRunBacklogMultiIssue:
             patch("factory.cli.run._print_banner"),
             patch("factory.cli.run._ensure_dashboard"),
             patch("factory.cli.run._run_single_cycle", return_value=0) as mock_cycle,
-            patch("factory.cli.run._chain_modes", return_value=0),
+
             patch("factory.worktree.prune_stale", return_value=[]),
             patch("pathlib.Path.is_dir", return_value=True),
         ):
