@@ -65,7 +65,7 @@ def main() -> None:
     high = [(k, v) for k, v in findings.items() if len(v) >= 2]
     medium = [(k, v) for k, v in findings.items() if len(v) == 1]
 
-    out: list[str] = ["# Synthesized QA Report\n"]
+    out = ["# Synthesized QA Report\n"]
 
     hc = Path(f"{project}/.factory/reviews/health-check.md")
     cr = Path(f"{project}/.factory/reviews/code-review.md")

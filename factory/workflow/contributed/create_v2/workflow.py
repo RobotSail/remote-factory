@@ -19,7 +19,7 @@ from factory.workflow.primitives import (
     VerdictType,
 )
 
-from .prompts import (
+from factory.workflow.contributed.create_v2.prompts import (
     CREATE_GATE_OVERWATCH_PROMPT,
     CREATE_GATE_QA_PROMPT,
     CREATE_GATE_STRATEGY_PROMPT,
