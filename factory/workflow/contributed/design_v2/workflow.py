@@ -20,7 +20,7 @@ from factory.workflow.primitives import (
     Workflow,
 )
 
-from .prompts import (
+from factory.workflow.contributed.design_v2.prompts import (
     DESIGN_DOC_PROMPT,
     GATE_OVERWATCH_PROMPT,
     GATE_QA_PROMPT,
