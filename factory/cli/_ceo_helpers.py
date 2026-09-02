@@ -46,7 +46,6 @@ from factory.cli._path_resolver import (
     _slugify,
 )
 from factory.cli._task_builder import _build_ceo_task
-from factory.cli.run import _chain_modes
 
 log = structlog.get_logger()
 
@@ -767,18 +766,11 @@ def _execute_ceo(
             ceo_tailer=ceo_tailer,
             cycle_span_id=cycle_span_id,
             pending_ids=pending_ids,
-            focus=focus,
-            min_growth=min_growth,
-            max_new=max_new,
-            branch=branch,
-            discover_only=discover_only,
-            no_github=no_github,
             needs_materialize=needs_materialize,
             wt_branch=wt_branch,
             no_worktree=no_worktree,
             ceo_mode=ceo_mode,
             verification_settings_file=_verification_settings_file,
-            just_plan=just_plan,
             engine=engine,
             prompt_override=headless_prompt_override,
         )
@@ -865,18 +857,11 @@ def _run_headless(
     ceo_tailer: object,
     cycle_span_id: str | None,
     pending_ids: list[str],
-    focus: str | None,
-    min_growth: int | None,
-    max_new: int | None,
-    branch: str | None,
-    discover_only: bool,
-    no_github: bool,
     needs_materialize: bool,
     wt_branch: str | None,
     no_worktree: bool,
     ceo_mode: str,
     verification_settings_file: str | None,
-    just_plan: bool = False,
     engine: str = "skill",
     prompt_override: str | None = None,
 ) -> int:
@@ -914,24 +899,7 @@ def _run_headless(
                     indent=2,
                 )
             )
-            code = 0 if exec_result.success else 1
-            if code != 0:
-                return code
-            return _chain_modes(
-                project_path,
-                focus=focus,
-                min_growth=min_growth,
-                max_new=max_new,
-                branch=branch,
-                already_improved=mode in (*DESIGN_MODES, "meta") or discover_only,
-                model=model,
-                no_github=no_github,
-                use_profile=use_profile,
-                tmux_persist=tmux_persist,
-                background=background,
-                completed_mode=mode,
-                no_worktree=no_worktree,
-            )
+            return 0 if exec_result.success else 1
         finally:
             _stop_ceo_tailer(ceo_tailer)
             complete_cycle_session(project_path, cycle_span_id)
@@ -967,24 +935,7 @@ def _run_headless(
         print(result)
         if code == 0 and pending_ids:
             mark_read(project_path, pending_ids)
-        if code != 0:
-            return code
-        chain_mode = "plan" if just_plan else mode
-        return _chain_modes(
-            project_path,
-            focus=focus,
-            min_growth=min_growth,
-            max_new=max_new,
-            branch=branch,
-            already_improved=mode in (*DESIGN_MODES, "meta") or discover_only,
-            model=model,
-            no_github=no_github,
-            use_profile=use_profile,
-            tmux_persist=tmux_persist,
-            background=background,
-            completed_mode=chain_mode,
-            no_worktree=no_worktree,
-        )
+        return code
     finally:
         if engine == "tool":
             try:
