@@ -117,8 +117,10 @@ class InnerLoop:
         workflow: Workflow | None = None,
         frozen_nodes: frozenset[str] = frozenset(),
         test_command: str = "",
-        test_format: str = "pytest",
+        test_format: str | None = None,
         metric_path: str = "score",
+        task: Any | None = None,
+        instance: Any | None = None,
     ) -> None:
         self.project_dir = Path(project_dir).resolve()
         self.factory_dir = self.project_dir / ".factory"
@@ -127,11 +129,25 @@ class InnerLoop:
         self.workflow = workflow
         self.frozen_nodes = frozenset(frozen_nodes)
         self.test_command = test_command
-        self.test_format = test_format
+        self.test_format = test_format or "pytest"
         self.metric_path = metric_path
+        self.task = task
+        self.instance = instance
         self._step_count = 0
         self._history: list[CycleRecord] = []
         self._validate_frozen_nodes()
+
+        # When task is set, derive flat fields from it for backward compat
+        if self.task is not None:
+            defn = getattr(self.task, "definition", None)
+            if defn is not None:
+                if not self.test_command and hasattr(defn, "verify_config"):
+                    self.test_command = defn.verify_config.command
+                if hasattr(defn, "scoring"):
+                    scoring = defn.scoring
+                    method = getattr(scoring, "method", "pytest")
+                    if test_format is None:
+                        self.test_format = method
 
     def _validate_frozen_nodes(self) -> None:
         if not self.frozen_nodes or self.workflow is None:
